@@ -2,127 +2,358 @@ close all;
 %clear all;
 
 %load Assignment_Data_SC42145.mat;
-s = tf('s');
-Kp = 0.2552;
-%Kp = 1.5;
+
+%% Part 1.1
+
+
+% PID controller parameters
+Kp = 0.2552; 
+Kp = 0.27;
 Td = 4.1;
 
-K_PI = Kp*(1+Td*s)/s;
+% s is the Laplace variable
+s = tf('s');
 
-TFs=tf(FWT);
-[num_TF11,den_TF11]=tfdata(-TFs(1,1),'v');
-TF11 = -TFs(1,1);
-z = zero(TF11);
-p = pole(TF11);
+% PID Controller
+K_PI_SISO = Kp * (1 + Td*s) / s;
 
-OLTF = K_PI*TF11;
-CLTF = feedback(OLTF,1);
-S = 1 - CLTF;
+% Assuming FWT is a 3x2 state-space model, extract the appropriate
+% transfer function for the beta to omega path. 
+G_beta_to_omega = -tf(FWT(1,1));
+
+% Obtain zeros and poles of the transfer function
+z_G = zero(G_beta_to_omega);
+p_G = pole(G_beta_to_omega);
+
+% Open-loop transfer function
+L_beta_to_omega = G_beta_to_omega * K_PI_SISO;
+
+% Closed-loop transfer function
+CLTF_beta_to_omega = feedback(L_beta_to_omega, 1);
+
+% Sensitivity function
+S_beta_to_omega = 1 - CLTF_beta_to_omega;
+
+% Plotting
 figure(1);
-%bode(TF11,K*TF11,CLTF,S);
-bode(TF11,OLTF,S);
+bode(G_beta_to_omega, L_beta_to_omega, S_beta_to_omega);
+title('Bode Plots of G, L and S');
+legend('G_{\beta\rightarrow\omega}', 'L_{\beta\rightarrow\omega}', 'S_{\beta\rightarrow\omega}');
+grid on; % Enable grid
+
 figure(2);
-rlocus(TF11);
+rlocus(G_beta_to_omega);
+title('Root Locus of G_{\beta\rightarrow\omega}');
 
-%sisotool(TF11);
-
+% Step Response with Peak Response and Settling Time
 figure(3);
-step(CLTF);
-bw = bandwidth(CLTF);
-zc = zero(CLTF);
-pc = pole(CLTF);
-% bw_ol = bandwidth(TF11)
-% 
-% sys_dist = TFs(1,3);
-% CLTF_dist = feedback(K*sys_dist,1);
-% S_dist = 1- CLTF_dist;
-% figure(4);
-% bode(CLTF_dist,S_dist);
-% figure(5);
-% step(CLTF_dist,1000);
+step(CLTF_beta_to_omega);
 
-mimo_plant = -minreal(balreal(TFs(1:2, 1:2)));
-w = 0.3*2*pi;
-Ai = 10^-4;
-s_p = j*w;
-G_w = evalfr(mimo_plant,s_p);
-RGA = G_w.*transpose(pinv(G_w));
-RGA_abs = abs(G_w.*pinv(G_w)');
+% Computing Peak Response and Settling Time
+info = stepinfo(CLTF_beta_to_omega);
+peakResponse = info.Peak;
+settlingTime = info.SettlingTime;
 
-z_mimo = tzero(mimo_plant);
-p_mimo = pole(mimo_plant);
-figure(6);
-pzmap(mimo_plant);
+% Displaying Peak Response and Settling Time
+disp(['SISO Peak Response: ', num2str(peakResponse)]);
+disp(['SISO Settling Time: ', num2str(settlingTime), ' seconds']);
 
-Wp_11 = (s/3 + w)/(s + w*Ai);
-Wp = [Wp_11 0; 0 0.2;];
-Wu = [0.01 0; 0 (5*10^-3*s^2 + 7*10^-4*s + 5*10^-5)/(s^2 + 14*10^-4*s + 10^-6)];
-Wt=0;
-figure();
-bode(Wu);
+% Check if the closed-loop system is stable
+zc = zero(CLTF_beta_to_omega);
+pc = pole(CLTF_beta_to_omega);
 
-[K3,CL3,GAM3,INFO3]=mixsyn(mimo_plant,Wp,Wu,Wt);
+isStable = all(real(pc) < 0);
+if isStable
+    disp('The SISO closed-loop system is stable.');
+else
+    disp('The SISO closed-loop system is unstable.');
+end
 
-P11 = [Wp; zeros(2);];
-P12 = [Wp*mimo_plant; Wu;];
-P21 = -eye(2);
-P22 = -mimo_plant;
-P = [P11 P12; P21 P22];
-[K,CL,gamma] = hinfsyn(P,2,2) 
+bw_cl_beta_to_omega = bandwidth(CLTF_beta_to_omega);
 
-sisocontroller=Kp*tf([Td 1], [1 0]); % simple controller with positive feedback
-
-TF_V_w = TFs(1,3);
-TF_V_z = TFs(2,3);
-
-systemnames ='mimo_plant Wp Wu';% TF_V_w TF_V_z'; % Define systems
-inputvar ='[w(2); u(2)]'; % Input generalized plant
-%input_to_TF_V_w= '[u]';
-%input_to_TF_V_z= '[u]';
-input_to_mimo_plant= '[u]';
-input_to_Wu= '[u]';
-input_to_Wp= '[w+mimo_plant]';
-outputvar= '[Wp; Wu; -mimo_plant-w]'; % Output generalized plant
-sysoutname='P1';
-sysic;
-[K2,CL2,GAM2,INFO2] = hinfsyn(P1,2,2); % Hinf design
-
-oneplusL = tf(eye(2) + K2*mimo_plant);
-det_gen_nyq = oneplusL(1,1) * oneplusL(1,2) - oneplusL(2,1) * oneplusL(2,2);
-figure();
-nyquist(det_gen_nyq);
-
-mimo_CLTF = feedback(mimo_plant*K3,eye(2));
-figure();
-step(mimo_CLTF(2,2));
-figure();
-step(mimo_CLTF(2,1));
-figure();
-step(mimo_CLTF);
-
- %% disturbance rejection
+%% Part 1.4 disturbance rejection
 
 warning off
 
-systemnames ='FWT';     % The full wind turbine model
+% Define the inputs and outputs for FWT and K_PI_SISO
+% Assuming FWT has 3 inputs (V, Beta, Tau) and outputs the FWT state
+% Assuming K_PI_SISO takes one input and outputs one control action
 
-inputvar ='[V; Beta; Tau]';    % Input generalized plant
+K_PI_SISO.InputName = 'e';
+K_PI_SISO.OutputName = 'u';
 
-input_to_FWT= '[Beta; Tau; V]';
+S1 = sumblk("e = ref - Omega (rad/s)");
+S2 = sumblk("Beta (deg) = -u"); % The plant expects the negative input from the controller
+% (because conotroller was designed for the -G plant)
 
-outputvar= '[FWT; Beta; Tau; FWT]';    % Output generalized plant also includes the inputs
 
-sysoutname='Gsim';
-cleansysic = 'yes';
-
-sysic;
+% Connect the systems
+inputs = {'ref', 'V (m/s)'};
+outputs = {'Omega (rad/s)', 'z (m)', 'Beta (deg)'};
+T = connect(FWT, K_PI_SISO, S1, S2, inputs, outputs);
 
 warning on
 
-% CL_sisocontroller=minreal(lft(Gsim(1:end-1,1:end-1),sisocontroller)); % SISO controller
-CL_mimocontroller=minreal(lft(Gsim, K)) % MIMO controller
+% Closed-loop system with SISO controller
+CL_sisocontroller = minreal(T);
 
 figure();
+step(CL_sisocontroller);
 
-%step(CL_sisocontroller); % simple code for a step on the wind
-step(CL_mimocontroller);
+%% Part 2
+
+mimo_plant = minreal(balreal(tf(FWT(1:2, 1:2))));
+
+% Compute the RGA
+w = 0.3*2*pi;   %bandwidth
+s_p = j*w;
+G_w = evalfr(mimo_plant, s_p);
+RGA = G_w.*transpose(pinv(G_w));
+RGA_abs = abs(G_w.*pinv(G_w)');
+
+
+% Compute poles
+z_mimo = tzero(mimo_plant);
+p_mimo = pole(mimo_plant);
+figure();
+pzmap(mimo_plant);
+title('Pole-zero map of the plant (G)');
+
+% Compute weighting functions
+w = 0.3*2*pi;
+Ai = 10^-4;
+Wp_11 = (s/3 + w)/(s + w*Ai);
+Wp = [Wp_11 0; 0 0.2;];
+Wu = [0.01 0; 0 (5*10^-3*s^2 + 7*10^-4*s + 5*10^-5)/(s^2 + 14*10^-4*s + 10^-6)];
+Wt = 0;
+
+figure();
+bode(1/Wp);
+title('Weighting function (Wp)');
+grid on; % Enable grid
+
+% [K3,CL3,GAM3,INFO3]=mixsyn(mimo_plant,Wp,Wu,Wt);
+
+% Generalized Plant
+P11 = [Wp; zeros(2);];
+P12 = [Wp*mimo_plant; -Wu;];
+P21 = -eye(2);
+P22 = -mimo_plant;
+P = minreal([P11 P12; P21 P22]);
+states_P = size(P); % Does 14 states mean anything?
+[K_MIMO,CL,gamma] = hinfsyn(P,2,2);
+K_MIMO = minreal(balreal(K_MIMO)); % Why does converting this to tf mess up with the Nyquist plot???
+
+S1 = sumblk("e = ref - Omega (rad/s)");
+CL_inf_system = stepResponseSimulationMIMO(K_MIMO, FWT, 80, S1);
+
+S_infinity_mimo = inv(tf(minreal(balreal(eye(2) + FWT(:,1:2) * K_MIMO))));
+T_infinity_mimo = tf(minreal(balreal((FWT(:,1:2) * K_MIMO) * S_infinity_mimo)));
+figure();
+bode(1/Wp, S_infinity_mimo);
+figure();
+sigma(S_infinity_mimo, 1/Wp);
+
+ 
+% sisocontroller=Kp*tf([Td 1], [1 0]); % simple controller with positive feedback
+% 
+% TF_V_w = TFs(1,3);
+% TF_V_z = TFs(2,3);
+% 
+% systemnames ='mimo_plant Wp Wu';% TF_V_w TF_V_z'; % Define systems
+% inputvar ='[w(2); u(2)]'; % Input generalized plant
+% %input_to_TF_V_w= '[u]';
+% %input_to_TF_V_z= '[u]';
+% input_to_mimo_plant= '[u]';
+% input_to_Wu= '[u]';
+% input_to_Wp= '[w+mimo_plant]';
+% outputvar= '[Wp; Wu; -mimo_plant-w]'; % Output generalized plant
+% sysoutname='P1';
+% sysic;
+% [K2,CL2,GAM2,INFO2] = hinfsyn(P1,2,2); % Hinf design
+% 
+oneplusL = tf(eye(2) + mimo_plant * K_MIMO);
+det_gen_nyq = oneplusL(1,1) * oneplusL(2,2) - oneplusL(1,2) * oneplusL(2,1);
+figure();
+nyquist(det_gen_nyq);
+% 
+% mimo_CLTF = feedback(mimo_plant*K3,eye(2));
+% figure();
+% step(mimo_CLTF(2,2));
+% figure();
+% step(mimo_CLTF(2,1));
+% figure();
+% step(mimo_CLTF);
+% 
+
+
+%% Part 3.1
+Kp = realp('Kp', 1);
+Ki = realp('Ki', 1);
+Kd = realp('Kd', 1);
+Tf = realp('Tf', 1);
+
+Wp_simple = 0.95*(s + 0.04*pi) / (0.016*pi + s);
+C_struct = Kp + Ki/s + (Kd*s) / (Tf*s + 1);
+% C_struct = Kp + Ki/s;
+
+% SISO hinfstruct
+Wp_siso = Wp_simple;
+Wp_siso.u = 'y_act';
+Wp_siso.y = 'z1';
+
+G_siso = -1 * tf(FWT(1,1));
+G_siso.u = 'u';
+G_siso.y = 'y_plant';
+
+C_siso = C_struct;
+C_siso.u = 'e';
+C_siso.y = 'u';
+
+Sum1 = sumblk('e = - y_act');
+Sum2 = sumblk('y_act = y_plant + y_dist');
+Siso_Con = connect(G_siso, Wp_siso, C_siso, Sum1, Sum2, {'y_dist'}, {'y_plant', 'z1'});
+
+opt = hinfstructOptions('Display', 'final', 'RandomStart', 5);
+N_siso = hinfstruct(Siso_Con, opt);
+
+% Extract controller gains:
+Kp_opt = N_siso.Blocks.Kp.Value;
+Ki_opt = N_siso . Blocks .Ki. Value ;
+Kd_opt = N_siso . Blocks .Kd. Value ;
+Tf_opt = N_siso . Blocks .Tf. Value ;
+Kfb_opt = Kp_opt + Ki_opt /s+( Kd_opt *s)/( Tf_opt *s +1);
+% Kfb_opt = Kp_opt + Ki_opt /s;
+
+% Simulate the system
+CL_FS_SISO_system = stepResponseSimulationSISO(Kfb_opt, FWT, 300);
+
+figure();
+bode(G_siso * Kfb_opt);
+
+%% Part 3.2
+
+Kp_mimo = realp('Kp', [1 0;1 0]);
+Ki_mimo = realp('Ki', [1 0;1 0]);
+Kd_mimo = realp('Kd', [0 0;0 0]);
+Tf_mimo = realp('Tf', 1);
+
+Kp_mimo.Free(1,2) = false;
+Kp_mimo.Free(2,2) = false;
+
+Ki_mimo.Free(1,2) = false;
+Ki_mimo.Free(2,2) = false;
+
+Kd_mimo.Free(1,1) = false;
+Kd_mimo.Free(1,2) = false;
+Kd_mimo.Free(2,1) = false;
+Kd_mimo.Free(2,2) = false;
+
+Wp_mimo = Wp;
+Wu_mimo = -Wu;
+C_struct_mimo = Kp_mimo + Ki_mimo/s + (Kd_mimo*s) / (Tf_mimo*s + 1);
+
+% MIMO hinfstruct
+Wp_mimo.u = 'y_act';
+Wp_mimo.y = 'z1';
+
+Wu_mimo.u = 'u';
+Wu_mimo.y = 'z2';
+
+G_mimo = mimo_plant;
+G_mimo.u = 'u';
+G_mimo.y = 'y_plant';
+
+C_mimo = C_struct_mimo;
+C_mimo.u = 'e';
+C_mimo.y = 'u';
+
+Sum1 = sumblk('e = - y_act', 2);
+Sum2 = sumblk('y_act = y_plant + y_dist', 2);
+Mimo_Con = connect(G_mimo, Wp_mimo, Wu_mimo, C_mimo, Sum1, Sum2, {'y_dist'}, {'y_plant', 'z1', 'z2'});
+
+opt = hinfstructOptions('Display', 'final', 'RandomStart', 5);
+N_mimo = hinfstruct(Mimo_Con, opt);
+
+% Extract controller gains:
+Kp_opt = N_mimo.Blocks.Kp.Value;
+Ki_opt = N_mimo . Blocks .Ki. Value ;
+Kd_opt = N_mimo . Blocks .Kd. Value ;
+Tf_opt = N_mimo . Blocks .Tf. Value ;
+
+% Simulate MIMO using Fixed Structure Controller
+Kfb_opt = Kp_opt + Ki_opt /s+( Kd_opt *s)/( Tf_opt *s +1);
+
+S1 = sumblk("e = ref - Omega (rad/s)");
+CL_FS_MIMO_system = stepResponseSimulationMIMO(Kfb_opt, FWT, 300, S1);
+
+
+S_FS_mimo = inv(tf(minreal(balreal(eye(2) + FWT(:,1:2) * Kfb_opt))));
+T_FS_mimo = tf(minreal(balreal((FWT(:,1:2) * Kfb_opt) * S_FS_mimo)));
+figure();
+bode(S_FS_mimo + T_FS_mimo);
+figure();
+sigma(S_FS_mimo);
+
+
+%% Function definitions
+function CL_system = stepResponseSimulationSISO(controller, plant, stime)
+    % Function to simulate the step response of a connected system
+    % controller - the controller system
+    % stime - step response simulation time
+    % plant - the plant system
+
+    controller.InputName = 'e';
+    controller.OutputName = 'u';
+
+    % Define the sum blocks
+    S1 = sumblk("e = ref - Omega (rad/s)");
+    S2 = sumblk("Beta (deg) = -u");
+
+    % Connect the systems
+    inputs = {'ref', 'V (m/s)'};
+    outputs = {'Omega (rad/s)', 'z (m)', 'Beta (deg)'};
+    T = connect(plant, controller, S1, S2, inputs, outputs);
+
+    % Simplify the closed-loop system
+    CL_system = minreal(T);
+
+    % Perform the step response simulation
+    figure();
+    step(CL_system, stime);
+    title('Step Response of the SISO-Loop System');
+    xlabel('Time (s)');
+    ylabel('Response');
+end
+
+function CL_system = stepResponseSimulationMIMO(controller, plant, stime, varargin)
+    % Function to simulate the step response with variable number of sum blocks
+    % controller - the controller system
+    % plant - the plant system
+    % stime - step response simulation time
+    % varargin - variable number of sum blocks
+
+    controller.Inputname = {'e', 'z (m)'};
+    controller.Outputname = {'Beta (deg)', 'tau_e (Nm)'};
+
+    % Define inputs and outputs for the system
+    inputs = {'ref', 'V (m/s)'};
+    outputs = {'Omega (rad/s)', 'z (m)', 'Beta (deg)', 'tau_e (Nm)'};
+
+    % Define the system connections
+    sumBlocks = varargin;  % Extract sum blocks from varargin
+
+    % Connect the systems with the sum blocks
+    connectedBlocks = [{plant, controller}, sumBlocks];
+    T = connect(connectedBlocks{:}, inputs, outputs);
+
+    % Simplify the closed-loop system
+    CL_system = minreal(T);
+
+    % Perform the step response simulation
+    figure();
+    step(CL_system, stime);
+    title('Step Response of the MIMO-Loop System');
+    xlabel('Time (s)');
+    ylabel('Response');
+end
