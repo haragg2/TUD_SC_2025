@@ -1,0 +1,52 @@
+% your code here
+
+pos_prev_est = [th0(1) .* ones(8, 1), th0(2) .* ones(8, 1)];
+Tau_prev_est = th0(3) .* ones(8, 1);
+
+delta_Tau = 0.51;
+
+A = eye(3);
+B = [0; 0 ; delta_Tau];
+
+% Initial estimate
+P_k = 1000 * eye(3);
+theta_k = [th0(1); th0(2); th0(3)];
+
+% TOA measurement noise
+Rk = vars .* eye(8);
+Q = diag([0.000001, 0.0000001, (5.86479973429277E-05)^2]);
+
+th_ekf = [];
+P_ekf = [];
+
+for k = 1:size(y_toa, 1)
+
+    % Times update
+    theta_k = A * theta_k + B;
+    P_k = A * P_k * A' + Q;
+
+    delta_theta_k = 0;
+
+    for i = 1 :100
+        % Measurement update
+        C = [((pos_prev_est(:, 1) - mic_locations(:,1)) ./ (c*sqrt(sum((pos_prev_est - mic_locations).^2,2)))), ((pos_prev_est(:,2) - mic_locations(:,2)) ./ (c*sqrt(sum((pos_prev_est - mic_locations).^2,2)))), ones(8, 1)];
+    
+        error_k = (y_toa(k, :)' - biases') - Tau_prev_est - (sqrt(sum((pos_prev_est - mic_locations).^2,2)))/c;
+    
+        K = P_k * C'  / (C * P_k * C'  + Rk);
+    
+        theta_k = theta_k + K * (error_k);
+    
+        P_k = P_k - (P_k * C' / (C * P_k * C' + Rk)) * C * P_k;
+    
+        pos_prev_est = [theta_k(1) .* ones(8, 1), theta_k(2) .* ones(8, 1)];
+        Tau_prev_est = (theta_k(3) .* ones(8, 1));
+    end
+
+
+    P_ekf = cat(3, P_ekf, P_k);
+    th_ekf = [th_ekf, theta_k];
+end
+
+figure(4); clf;
+plotresults(th_ekf(1:2,:),P_ekf(1:2,1:2,:),mic_locations',ground_truth);
