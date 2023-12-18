@@ -8,8 +8,7 @@ close all;
 
 % PID controller parameters
 Kp = 0.2552; 
-Kp = 0.27;
-Td = 4.1;
+Td = 1;
 
 % s is the Laplace variable
 s = tf('s');
@@ -105,8 +104,8 @@ step(CL_sisocontroller);
 mimo_plant = minreal(balreal(tf(FWT(1:2, 1:2))));
 
 % Compute the RGA
-w = 0.3*2*pi;   %bandwidth
-s_p = j*w;
+w = 0;%0.3*2*pi;   %bandwidth
+s_p = 1j*w;
 G_w = evalfr(mimo_plant, s_p);
 RGA = G_w.*transpose(pinv(G_w));
 RGA_abs = abs(G_w.*pinv(G_w)');
@@ -136,11 +135,11 @@ grid on; % Enable grid
 
 % Generalized Plant
 P11 = [Wp; zeros(2);];
-P12 = [Wp*mimo_plant; -Wu;];
+P12 = [Wp*mimo_plant; Wu;];
 P21 = -eye(2);
 P22 = -mimo_plant;
-P = minreal([P11 P12; P21 P22]);
-states_P = size(P); % Does 14 states mean anything?
+P = minreal(balreal([P11 P12; P21 P22]));
+
 [K_MIMO,CL,gamma] = hinfsyn(P,2,2);
 K_MIMO = minreal(balreal(K_MIMO)); % Why does converting this to tf mess up with the Nyquist plot???
 
@@ -154,39 +153,17 @@ bode(1/Wp, S_infinity_mimo);
 figure();
 sigma(S_infinity_mimo, 1/Wp);
 
- 
-% sisocontroller=Kp*tf([Td 1], [1 0]); % simple controller with positive feedback
-% 
-% TF_V_w = TFs(1,3);
-% TF_V_z = TFs(2,3);
-% 
-% systemnames ='mimo_plant Wp Wu';% TF_V_w TF_V_z'; % Define systems
-% inputvar ='[w(2); u(2)]'; % Input generalized plant
-% %input_to_TF_V_w= '[u]';
-% %input_to_TF_V_z= '[u]';
-% input_to_mimo_plant= '[u]';
-% input_to_Wu= '[u]';
-% input_to_Wp= '[w+mimo_plant]';
-% outputvar= '[Wp; Wu; -mimo_plant-w]'; % Output generalized plant
-% sysoutname='P1';
-% sysic;
-% [K2,CL2,GAM2,INFO2] = hinfsyn(P1,2,2); % Hinf design
-% 
+% Calculate the number of states
+K_nstates = size(K_MIMO.A, 1);
+G_nstates = size(mimo_plant.A, 1);
+Wp_nstates = size(ss(Wp).A, 1);
+Wu_nstates = size(ss(Wu).A, 1);
+P_nstates = size(P.A, 1);
+
 oneplusL = tf(eye(2) + mimo_plant * K_MIMO);
 det_gen_nyq = oneplusL(1,1) * oneplusL(2,2) - oneplusL(1,2) * oneplusL(2,1);
 figure();
 nyquist(det_gen_nyq);
-% 
-% mimo_CLTF = feedback(mimo_plant*K3,eye(2));
-% figure();
-% step(mimo_CLTF(2,2));
-% figure();
-% step(mimo_CLTF(2,1));
-% figure();
-% step(mimo_CLTF);
-% 
-
-
 %% Part 3.1
 Kp = realp('Kp', 1);
 Ki = realp('Ki', 1);
@@ -195,7 +172,6 @@ Tf = realp('Tf', 1);
 
 Wp_simple = 0.95*(s + 0.04*pi) / (0.016*pi + s);
 C_struct = Kp + Ki/s + (Kd*s) / (Tf*s + 1);
-% C_struct = Kp + Ki/s;
 
 % SISO hinfstruct
 Wp_siso = Wp_simple;
@@ -219,11 +195,11 @@ N_siso = hinfstruct(Siso_Con, opt);
 
 % Extract controller gains:
 Kp_opt = N_siso.Blocks.Kp.Value;
-Ki_opt = N_siso . Blocks .Ki. Value ;
+Ki_opt = N_siso . Blocks .Ki. Value;
 Kd_opt = N_siso . Blocks .Kd. Value ;
 Tf_opt = N_siso . Blocks .Tf. Value ;
 Kfb_opt = Kp_opt + Ki_opt /s+( Kd_opt *s)/( Tf_opt *s +1);
-% Kfb_opt = Kp_opt + Ki_opt /s;
+% Kfb_opt = Kp_opt + ( Kd_opt *s)/( Tf_opt *s +1);
 
 % Simulate the system
 CL_FS_SISO_system = stepResponseSimulationSISO(Kfb_opt, FWT, 300);
