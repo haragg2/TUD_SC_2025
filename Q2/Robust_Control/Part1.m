@@ -195,7 +195,7 @@ C_siso.y = 'u';
 
 Sum1 = sumblk('e = - y_act');
 Sum2 = sumblk('y_act = y_plant + y_dist');
-Siso_Con = connect(G_siso, Wp_siso, C_siso, Sum1, Sum2, {'y_dist'}, {'y_plant', 'z1'});
+Siso_Con = connect(G_siso, Wp_siso, C_siso, Sum1, Sum2, {'y_dist'}, {'z1'});
 
 opt = hinfstructOptions('Display', 'final', 'RandomStart', 5);
 N_siso = hinfstruct(Siso_Con, opt);
@@ -254,7 +254,7 @@ C_mimo.y = 'u';
 
 Sum1 = sumblk('e = - y_act', 2);
 Sum2 = sumblk('y_act = y_plant + y_dist', 2);
-Mimo_Con = connect(G_mimo, Wp_mimo, Wu_mimo, C_mimo, Sum1, Sum2, {'y_dist'}, {'y_plant', 'z1', 'z2'});
+Mimo_Con = connect(G_mimo, Wp_mimo, Wu_mimo, C_mimo, Sum1, Sum2, {'y_dist'}, {'z1', 'z2'});
 
 opt = hinfstructOptions('Display', 'final', 'RandomStart', 5);
 N_mimo = hinfstruct(Mimo_Con, opt);
