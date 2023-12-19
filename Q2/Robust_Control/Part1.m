@@ -110,7 +110,6 @@ G_w = evalfr(mimo_plant, s_p);
 RGA = G_w.*transpose(pinv(G_w));
 RGA_abs = abs(G_w.*pinv(G_w)');
 
-
 % Compute poles
 z_mimo = tzero(mimo_plant);
 p_mimo = pole(mimo_plant);
@@ -126,16 +125,9 @@ Wp = [Wp_11 0; 0 0.2;];
 Wu = [0.01 0; 0 (5*10^-3*s^2 + 7*10^-4*s + 5*10^-5)/(s^2 + 14*10^-4*s + 10^-6)];
 Wt = 0;
 
-figure();
-bode(1/Wp);
-title('Weighting function (Wp)');
-grid on; % Enable grid
-
-% [K3,CL3,GAM3,INFO3]=mixsyn(mimo_plant,Wp,Wu,Wt);
-
 % Generalized Plant
-P11 = [Wp; zeros(2);];
-P12 = [Wp*mimo_plant; Wu;];
+P11 = [zeros(2); Wp];
+P12 = [Wu; Wp * mimo_plant];
 P21 = -eye(2);
 P22 = -mimo_plant;
 P = minreal(balreal([P11 P12; P21 P22]));
