@@ -3,7 +3,7 @@ close all;
 
 %load Assignment_Data_SC42145.mat;
 
-%% Part 1.1
+%% Part 1.1 to 1.3
 
 
 % PID controller parameters
@@ -104,7 +104,7 @@ step(CL_sisocontroller);
 mimo_plant = minreal(balreal(tf(FWT(1:2, 1:2))));
 
 % Compute the RGA
-w = 0;%0.3*2*pi;   %bandwidth
+w = 0; %0.3*2*pi;   %bandwidth
 s_p = 1j*w;
 G_w = evalfr(mimo_plant, s_p);
 RGA = G_w.*transpose(pinv(G_w));
@@ -116,7 +116,7 @@ z_mimo = tzero(mimo_plant);
 p_mimo = pole(mimo_plant);
 figure();
 pzmap(mimo_plant);
-title('Pole-zero map of the plant (G)');
+title('Pole-zero map of the MIMO plant (G)');
 
 % Compute weighting functions
 w = 0.3*2*pi;
@@ -143,15 +143,29 @@ P = minreal(balreal([P11 P12; P21 P22]));
 [K_MIMO,CL,gamma] = hinfsyn(P,2,2);
 K_MIMO = minreal(balreal(K_MIMO)); % Why does converting this to tf mess up with the Nyquist plot???
 
+% Gives warning of name conflict
+K_MIMO.InputName = {'Omega (rad/s)', 'z (m)'};
+K_MIMO.OutputName = {'Beta (deg)', 'tau_e (Nm)'};
+
 S1 = sumblk("e = ref - Omega (rad/s)");
 CL_inf_system = stepResponseSimulationMIMO(K_MIMO, FWT, 80, S1);
 
 S_infinity_mimo = inv(tf(minreal(balreal(eye(2) + FWT(:,1:2) * K_MIMO))));
 T_infinity_mimo = tf(minreal(balreal((FWT(:,1:2) * K_MIMO) * S_infinity_mimo)));
+
 figure();
-bode(1/Wp, S_infinity_mimo);
+bodemag(1/Wp, S_infinity_mimo);
+grid on; % Enable grid
+title('1/Wp and Sensitivity of H-infinity');
+
+% figure();
+% sigma(S_infinity_mimo);
+
+Hinf_controller_sensitivity = K_MIMO * S_infinity_mimo;
 figure();
-sigma(S_infinity_mimo, 1/Wp);
+bodemag(1/Wu, Hinf_controller_sensitivity);
+grid on; % Enable grid
+title('1/Wu and K*S of H-infinity');
 
 % Calculate the number of states
 K_nstates = size(K_MIMO.A, 1);
@@ -164,6 +178,7 @@ oneplusL = tf(eye(2) + mimo_plant * K_MIMO);
 det_gen_nyq = oneplusL(1,1) * oneplusL(2,2) - oneplusL(1,2) * oneplusL(2,1);
 figure();
 nyquist(det_gen_nyq);
+
 %% Part 3.1
 Kp = realp('Kp', 1);
 Ki = realp('Ki', 1);
@@ -205,7 +220,7 @@ Kfb_opt = Kp_opt + Ki_opt /s+( Kd_opt *s)/( Tf_opt *s +1);
 CL_FS_SISO_system = stepResponseSimulationSISO(Kfb_opt, FWT, 300);
 
 figure();
-bode(G_siso * Kfb_opt);
+bodemag(G_siso * Kfb_opt);
 
 %% Part 3.2
 
@@ -225,11 +240,12 @@ Kd_mimo.Free(1,2) = false;
 Kd_mimo.Free(2,1) = false;
 Kd_mimo.Free(2,2) = false;
 
-Wp_mimo = Wp;
-Wu_mimo = -Wu;
 C_struct_mimo = Kp_mimo + Ki_mimo/s + (Kd_mimo*s) / (Tf_mimo*s + 1);
 
 % MIMO hinfstruct
+Wp_mimo = Wp;
+Wu_mimo = -Wu;
+
 Wp_mimo.u = 'y_act';
 Wp_mimo.y = 'z1';
 
@@ -253,9 +269,9 @@ N_mimo = hinfstruct(Mimo_Con, opt);
 
 % Extract controller gains:
 Kp_opt = N_mimo.Blocks.Kp.Value;
-Ki_opt = N_mimo . Blocks .Ki. Value ;
-Kd_opt = N_mimo . Blocks .Kd. Value ;
-Tf_opt = N_mimo . Blocks .Tf. Value ;
+Ki_opt = N_mimo.Blocks.Ki.Value ;
+Kd_opt = N_mimo.Blocks.Kd.Value ;
+Tf_opt = N_mimo.Blocks.Tf.Value ;
 
 % Simulate MIMO using Fixed Structure Controller
 Kfb_opt = Kp_opt + Ki_opt /s+( Kd_opt *s)/( Tf_opt *s +1);
@@ -266,10 +282,21 @@ CL_FS_MIMO_system = stepResponseSimulationMIMO(Kfb_opt, FWT, 300, S1);
 
 S_FS_mimo = inv(tf(minreal(balreal(eye(2) + FWT(:,1:2) * Kfb_opt))));
 T_FS_mimo = tf(minreal(balreal((FWT(:,1:2) * Kfb_opt) * S_FS_mimo)));
+
 figure();
-bode(S_FS_mimo + T_FS_mimo);
+bodemag(S_FS_mimo + T_FS_mimo);
+title('Sensitivity + Complimentary-sensitivity = S + T for Fixed Structure');
+
+% figure();
+% sigma(S_FS_mimo);
+
 figure();
-sigma(S_FS_mimo);
+bodemag(S_infinity_mimo, S_FS_mimo);
+title('Sensitivity of H-infinity and FS');
+
+figure();
+bodemag(T_infinity_mimo, T_FS_mimo);
+title('Complimentary-sensitivity of H-infinity and FS');
 
 
 %% Function definitions
