@@ -146,12 +146,31 @@ S_infinity_mimo = inv(tf(minreal(balreal(eye(2) + FWT(:,1:2) * K_MIMO))));
 T_infinity_mimo = tf(minreal(balreal((FWT(:,1:2) * K_MIMO) * S_infinity_mimo)));
 
 figure();
+bodemag(1/Wp_11);
+grid on; % Enable grid
+title('1/W_{p11} - Performance weighting function on channel 1');
+
+figure();
+Wp.InputName = {'Omega (rad/s)', 'z (m)'};
+Wp.OutputName = {'Omega (rad/s)', 'z (m)'};
+bodemag(1/Wp);
+grid on; % Enable grid
+title('1/W_{p} - Performance weighting function');
+
+figure();
 bodemag(1/Wp, S_infinity_mimo);
 grid on; % Enable grid
 title('1/Wp and Sensitivity of H-infinity');
 
 % figure();
 % sigma(S_infinity_mimo);
+
+figure();
+Wu.InputName = {'Beta (deg)', 'tau_e (Nm)'};
+Wu.OutputName = {'Omega (rad/s)', 'z (m)'};
+bodemag(1/Wu);
+grid on; % Enable grid
+title('1/W_{u} - Controller sensitivity weighting function');
 
 Hinf_controller_sensitivity = K_MIMO * S_infinity_mimo;
 figure();
@@ -174,11 +193,12 @@ nyquist(det_gen_nyq);
 %% Part 3.1
 Kp = realp('Kp', 1);
 Ki = realp('Ki', 1);
-Kd = realp('Kd', 1);
-Tf = realp('Tf', 1);
+% Kd = realp('Kd', 1);
+% Tf = realp('Tf', 1);
 
 Wp_simple = 0.95*(s + 0.04*pi) / (0.016*pi + s);
-C_struct = Kp + Ki/s + (Kd*s) / (Tf*s + 1);
+% C_struct = Kp + Ki/s + (Kd*s) / (Tf*s + 1);
+C_struct = Kp + Ki/s;
 
 % SISO hinfstruct
 Wp_siso = Wp_simple;
@@ -203,16 +223,16 @@ N_siso = hinfstruct(Siso_Con, opt);
 % Extract controller gains:
 Kp_opt = N_siso.Blocks.Kp.Value;
 Ki_opt = N_siso . Blocks .Ki. Value;
-Kd_opt = N_siso . Blocks .Kd. Value ;
-Tf_opt = N_siso . Blocks .Tf. Value ;
-Kfb_opt = Kp_opt + Ki_opt /s+( Kd_opt *s)/( Tf_opt *s +1);
-% Kfb_opt = Kp_opt + ( Kd_opt *s)/( Tf_opt *s +1);
+% Kd_opt = N_siso . Blocks .Kd. Value ;
+% Tf_opt = N_siso . Blocks .Tf. Value ;
+% Kfb_opt = Kp_opt + Ki_opt /s + ( Kd_opt *s)/( Tf_opt *s +1);
+Kfb_opt = Kp_opt + Ki_opt /s;
+
+figure();
+bodemag(1/Wp_simple, inv(tf(minreal(balreal(1 + FWT(1,1) * Kfb_opt)))));
 
 % Simulate the system
 CL_FS_SISO_system = stepResponseSimulationSISO(Kfb_opt, FWT, 300);
-
-figure();
-bodemag(G_siso * Kfb_opt);
 
 %% Part 3.2
 
