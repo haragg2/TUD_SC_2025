@@ -197,8 +197,10 @@ Wp_nstates = size(ss(Wp).A, 1);
 Wu_nstates = size(ss(Wu).A, 1);
 P_nstates = size(P.A, 1);
 
+warning off
 oneplusL = tf(eye(2) + mimo_plant * K_MIMO);
 det_gen_nyq = oneplusL(1,1) * oneplusL(2,2) - oneplusL(1,2) * oneplusL(2,1);
+warning on
 figure();
 nyquist(det_gen_nyq);
 print -depsc gen_nyquist_1_2.8.eps
@@ -241,12 +243,15 @@ Tf_opt = N_siso.Blocks.Tf.Value ;
 Kfb_opt = Kp_opt + Ki_opt /s + ( Kd_opt *s)/( Tf_opt *s +1);
 %Kfb_opt = Kp_opt + Ki_opt /s;
 
-figure();
-bodemag(1/Wp_simple, inv(tf(minreal(balreal(1 + FWT(1,1) * Kfb_opt)))));
-grid on;
+% figure();
+% bodemag(1/Wp_simple, inv(tf(minreal(balreal(1 + FWT(1,1) * Kfb_opt)))));
+% title('1/W_siso and Sensitivity of SISO FS');
+% grid on;
 
 % Simulate the system
+warning off
 CL_FS_SISO_system = stepResponseSimulationSISO(Kfb_opt, FWT, 300);
+warning on
 print -depsc siso_fwt_pid.eps
 
 
