@@ -7,7 +7,7 @@ close all;
 
 
 % PID controller parameters
-Kp = 0.2552; 
+Kp = 0.27; 
 Td = 1;
 
 % s is the Laplace variable
@@ -39,14 +39,18 @@ bode(G_beta_to_omega, L_beta_to_omega, S_beta_to_omega);
 title('Bode Plots of G, L and S');
 legend('G_{\beta\rightarrow\omega}', 'L_{\beta\rightarrow\omega}', 'S_{\beta\rightarrow\omega}');
 grid on; % Enable grid
+print -depsc G_K_S_Bode
 
 figure(2);
 rlocus(G_beta_to_omega);
 title('Root Locus of G_{\beta\rightarrow\omega}');
+print -depsc rlocus
 
 % Step Response with Peak Response and Settling Time
 figure(3);
 step(CLTF_beta_to_omega);
+grid on;
+print -depsc KI_Step
 
 % Computing Peak Response and Settling Time
 info = stepinfo(CLTF_beta_to_omega);
@@ -98,6 +102,8 @@ CL_sisocontroller = minreal(T);
 
 figure();
 step(CL_sisocontroller);
+grid on;
+print -depsc DistRej_Step
 
 %% Part 2
 
@@ -116,6 +122,7 @@ p_mimo = pole(mimo_plant);
 figure();
 pzmap(mimo_plant);
 title('Pole-zero map of the MIMO plant (G)');
+print -depsc MIMO_pole_zero_2.2.eps
 
 % Compute weighting functions
 w = 0.3*2*pi;
@@ -140,7 +147,8 @@ K_MIMO.InputName = {'Omega (rad/s)', 'z (m)'};
 K_MIMO.OutputName = {'Beta (deg)', 'tau_e (Nm)'};
 
 S1 = sumblk("e = ref - Omega (rad/s)");
-CL_inf_system = stepResponseSimulationMIMO(K_MIMO, FWT, 80, S1);
+CL_inf_system = stepResponseSimulationMIMO(K_MIMO, FWT, 1000, S1);
+print -depsc H_inf_performance.eps
 
 S_infinity_mimo = inv(tf(minreal(balreal(eye(2) + FWT(:,1:2) * K_MIMO))));
 T_infinity_mimo = tf(minreal(balreal((FWT(:,1:2) * K_MIMO) * S_infinity_mimo)));
@@ -149,6 +157,7 @@ figure();
 bodemag(1/Wp_11);
 grid on; % Enable grid
 title('1/W_{p11} - Performance weighting function on channel 1');
+print -depsc wp11_Bode
 
 figure();
 Wp.InputName = {'Omega (rad/s)', 'z (m)'};
@@ -156,12 +165,13 @@ Wp.OutputName = {'Omega (rad/s)', 'z (m)'};
 bodemag(1/Wp);
 grid on; % Enable grid
 title('1/W_{p} - Performance weighting function');
+print -depsc Wp_bode_2.6.eps
 
 figure();
 bodemag(1/Wp, S_infinity_mimo);
 grid on; % Enable grid
 title('1/Wp and Sensitivity of H-infinity');
-
+print -depsc Wp_H_bode.eps
 % figure();
 % sigma(S_infinity_mimo);
 
@@ -171,12 +181,14 @@ Wu.OutputName = {'Omega (rad/s)', 'z (m)'};
 bodemag(1/Wu);
 grid on; % Enable grid
 title('1/W_{u} - Controller sensitivity weighting function');
+print -depsc Wu_bode_2.6.eps
 
 Hinf_controller_sensitivity = K_MIMO * S_infinity_mimo;
 figure();
 bodemag(1/Wu, Hinf_controller_sensitivity);
 grid on; % Enable grid
 title('1/Wu and K*S of H-infinity');
+print -depsc Wu_KS_infinity_2.7.eps
 
 % Calculate the number of states
 K_nstates = size(K_MIMO.A, 1);
@@ -189,16 +201,18 @@ oneplusL = tf(eye(2) + mimo_plant * K_MIMO);
 det_gen_nyq = oneplusL(1,1) * oneplusL(2,2) - oneplusL(1,2) * oneplusL(2,1);
 figure();
 nyquist(det_gen_nyq);
+print -depsc gen_nyquist_1_2.8.eps
 
 %% Part 3.1
 Kp = realp('Kp', 1);
 Ki = realp('Ki', 1);
-% Kd = realp('Kd', 1);
-% Tf = realp('Tf', 1);
+Kd = realp('Kd', 1);
+Tf = realp('Tf', 1);
 
 Wp_simple = 0.95*(s + 0.04*pi) / (0.016*pi + s);
-% C_struct = Kp + Ki/s + (Kd*s) / (Tf*s + 1);
-C_struct = Kp + Ki/s;
+C_struct = Kp + Ki/s + (Kd*s) / (Tf*s + 1);
+% C_struct = Kp + Ki/s;
+% C_struct = Kp + (Kd*s) / (Tf*s + 1);
 
 % SISO hinfstruct
 Wp_siso = Wp_simple;
@@ -223,16 +237,20 @@ N_siso = hinfstruct(Siso_Con, opt);
 % Extract controller gains:
 Kp_opt = N_siso.Blocks.Kp.Value;
 Ki_opt = N_siso . Blocks .Ki. Value;
-% Kd_opt = N_siso . Blocks .Kd. Value ;
-% Tf_opt = N_siso . Blocks .Tf. Value ;
-% Kfb_opt = Kp_opt + Ki_opt /s + ( Kd_opt *s)/( Tf_opt *s +1);
-Kfb_opt = Kp_opt + Ki_opt /s;
+Kd_opt = N_siso . Blocks .Kd. Value ;
+Tf_opt = N_siso . Blocks .Tf. Value ;
+Kfb_opt = Kp_opt + Ki_opt /s + ( Kd_opt *s)/( Tf_opt *s +1);
+%Kfb_opt = Kp_opt + Ki_opt /s;
+% Kfb_opt = Kp_opt + ( Kd_opt *s)/( Tf_opt *s +1);
 
 figure();
 bodemag(1/Wp_simple, inv(tf(minreal(balreal(1 + FWT(1,1) * Kfb_opt)))));
+grid on;
 
 % Simulate the system
 CL_FS_SISO_system = stepResponseSimulationSISO(Kfb_opt, FWT, 300);
+print -depsc siso_fwt_pid.eps
+
 
 %% Part 3.2
 
@@ -246,6 +264,8 @@ Kp_mimo.Free(2,2) = false;
 
 Ki_mimo.Free(1,2) = false;
 Ki_mimo.Free(2,2) = false;
+Ki_mimo.Free(1,1) = false;
+Ki_mimo.Free(2,1) = false;
 
 % Kd_mimo.Free(1,1) = false;
 Kd_mimo.Free(1,2) = false;
@@ -290,26 +310,30 @@ Kfb_opt = Kp_opt + Ki_opt /s+( Kd_opt *s)/( Tf_opt *s +1);
 
 S1 = sumblk("e = ref - Omega (rad/s)");
 CL_FS_MIMO_system = stepResponseSimulationMIMO(Kfb_opt, FWT, 300, S1);
-
+print -depsc FC_MIMO_performance.eps
 
 S_FS_mimo = inv(tf(minreal(balreal(eye(2) + FWT(:,1:2) * Kfb_opt))));
 T_FS_mimo = tf(minreal(balreal((FWT(:,1:2) * Kfb_opt) * S_FS_mimo)));
 
 figure();
 bodemag(S_FS_mimo + T_FS_mimo);
+grid on;
 title('Sensitivity + Complimentary-sensitivity = S + T for Fixed Structure');
-
+print -depsc FC_MIMO_S_T.eps
 % figure();
 % sigma(S_FS_mimo);
 
 figure();
 bodemag(S_infinity_mimo, S_FS_mimo);
+grid on;
 title('Sensitivity of H-infinity and FS');
+print -depsc FC_H_MIMO_S.eps
 
 figure();
 bodemag(T_infinity_mimo, T_FS_mimo);
+grid on;
 title('Complimentary-sensitivity of H-infinity and FS');
-
+print -depsc FC_H_MIMO_T.eps
 
 %% Function definitions
 function CL_system = stepResponseSimulationSISO(controller, plant, stime)
@@ -337,8 +361,10 @@ function CL_system = stepResponseSimulationSISO(controller, plant, stime)
     figure();
     step(CL_system, stime);
     title('Step Response of the SISO-Loop System');
-    xlabel('Time (s)');
+    grid on;
+    xlabel('Time');
     ylabel('Response');
+
 end
 
 function CL_system = stepResponseSimulationMIMO(controller, plant, stime, varargin)
@@ -369,6 +395,8 @@ function CL_system = stepResponseSimulationMIMO(controller, plant, stime, vararg
     figure();
     step(CL_system, stime);
     title('Step Response of the MIMO-Loop System');
-    xlabel('Time (s)');
+    xlabel('Time');
     ylabel('Response');
+    grid on;
+    
 end
