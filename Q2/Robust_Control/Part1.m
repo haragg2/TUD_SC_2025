@@ -212,7 +212,6 @@ Tf = realp('Tf', 1);
 Wp_simple = 0.95*(s + 0.04*pi) / (0.016*pi + s);
 C_struct = Kp + Ki/s + (Kd*s) / (Tf*s + 1);
 % C_struct = Kp + Ki/s;
-% C_struct = Kp + (Kd*s) / (Tf*s + 1);
 
 % SISO hinfstruct
 Wp_siso = Wp_simple;
@@ -236,12 +235,11 @@ N_siso = hinfstruct(Siso_Con, opt);
 
 % Extract controller gains:
 Kp_opt = N_siso.Blocks.Kp.Value;
-Ki_opt = N_siso . Blocks .Ki. Value;
-Kd_opt = N_siso . Blocks .Kd. Value ;
-Tf_opt = N_siso . Blocks .Tf. Value ;
+Ki_opt = N_siso.Blocks.Ki.Value;
+Kd_opt = N_siso.Blocks.Kd.Value ;
+Tf_opt = N_siso.Blocks.Tf.Value ;
 Kfb_opt = Kp_opt + Ki_opt /s + ( Kd_opt *s)/( Tf_opt *s +1);
 %Kfb_opt = Kp_opt + Ki_opt /s;
-% Kfb_opt = Kp_opt + ( Kd_opt *s)/( Tf_opt *s +1);
 
 figure();
 bodemag(1/Wp_simple, inv(tf(minreal(balreal(1 + FWT(1,1) * Kfb_opt)))));
@@ -264,12 +262,8 @@ Kp_mimo.Free(2,2) = false;
 
 Ki_mimo.Free(1,2) = false;
 Ki_mimo.Free(2,2) = false;
-Ki_mimo.Free(1,1) = false;
-Ki_mimo.Free(2,1) = false;
 
-% Kd_mimo.Free(1,1) = false;
 Kd_mimo.Free(1,2) = false;
-% Kd_mimo.Free(2,1) = false;
 Kd_mimo.Free(2,2) = false;
 
 C_struct_mimo = Kp_mimo + Ki_mimo/s + (Kd_mimo*s) / (Tf_mimo*s + 1);
@@ -320,8 +314,6 @@ bodemag(S_FS_mimo + T_FS_mimo);
 grid on;
 title('Sensitivity + Complimentary-sensitivity = S + T for Fixed Structure');
 print -depsc FC_MIMO_S_T.eps
-% figure();
-% sigma(S_FS_mimo);
 
 figure();
 bodemag(S_infinity_mimo, S_FS_mimo);
