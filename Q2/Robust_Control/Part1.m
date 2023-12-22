@@ -127,8 +127,8 @@ Wt = 0;
 
 % Generalized Plant
 P11 = [zeros(2); Wp];
-P12 = [Wu; Wp * mimo_plant];
-P21 = -eye(2);
+P12 = [Wu; -Wp * mimo_plant];
+P21 = eye(2);
 P22 = -mimo_plant;
 P = minreal(balreal([P11 P12; P21 P22]));
 
@@ -213,8 +213,8 @@ C_siso = C_struct;
 C_siso.u = 'e';
 C_siso.y = 'u';
 
-Sum1 = sumblk('e = - y_act');
-Sum2 = sumblk('y_act = y_plant + y_dist');
+Sum1 = sumblk('e =  y_act');
+Sum2 = sumblk('y_act = -y_plant + y_dist');
 Siso_Con = connect(G_siso, Wp_siso, C_siso, Sum1, Sum2, {'y_dist'}, {'z1'});
 
 opt = hinfstructOptions('Display', 'final', 'RandomStart', 5);
@@ -238,7 +238,7 @@ CL_FS_SISO_system = stepResponseSimulationSISO(Kfb_opt, FWT, 300);
 
 Kp_mimo = realp('Kp', [1 0;1 0]);
 Ki_mimo = realp('Ki', [1 0;1 0]);
-Kd_mimo = realp('Kd', [0 0;0 0]);
+Kd_mimo = realp('Kd', [1 0;1 0]);
 Tf_mimo = realp('Tf', 1);
 
 Kp_mimo.Free(1,2) = false;
@@ -247,9 +247,9 @@ Kp_mimo.Free(2,2) = false;
 Ki_mimo.Free(1,2) = false;
 Ki_mimo.Free(2,2) = false;
 
-Kd_mimo.Free(1,1) = false;
+% Kd_mimo.Free(1,1) = false;
 Kd_mimo.Free(1,2) = false;
-Kd_mimo.Free(2,1) = false;
+% Kd_mimo.Free(2,1) = false;
 Kd_mimo.Free(2,2) = false;
 
 C_struct_mimo = Kp_mimo + Ki_mimo/s + (Kd_mimo*s) / (Tf_mimo*s + 1);
@@ -272,8 +272,8 @@ C_mimo = C_struct_mimo;
 C_mimo.u = 'e';
 C_mimo.y = 'u';
 
-Sum1 = sumblk('e = - y_act', 2);
-Sum2 = sumblk('y_act = y_plant + y_dist', 2);
+Sum1 = sumblk('e = y_act', 2);
+Sum2 = sumblk('y_act = -y_plant + y_dist', 2);
 Mimo_Con = connect(G_mimo, Wp_mimo, Wu_mimo, C_mimo, Sum1, Sum2, {'y_dist'}, {'z1', 'z2'});
 
 opt = hinfstructOptions('Display', 'final', 'RandomStart', 5);
