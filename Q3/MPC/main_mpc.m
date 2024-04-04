@@ -255,16 +255,26 @@ for k = 1:1:size(T, 2)
 end
 
 %%  Simulation of regulation
+close all;
 x0 = [16.9, 3.89, -0.11, -0.09]';
 figure;
 lsim(sysd_lqr, u, T, x0);
 
-xw = (r * cos(beta) * x(1, 1:size(T, 2)));
-yw = (r * sin(beta) * x(1, 1:size(T, 2)));
+xw = @(tt) (r * cos(beta) * [1 0 0 0]*(LTI.A* x(:,int8(tt/0.05)+1) + LTI.B*u(int8(tt/0.05)+1)));
+yw = @(tt) (r * sin(beta) * [1 0 0 0]*(LTI.A* x(:,int8(tt/0.05)+1) + LTI.B*u(int8(tt/0.05)+1)));
 
-xp = xw + (l * sin(x(3, 1:size(T, 2))));
-yp = yw + (l * cos(x(3, 1:size(T, 2))));
+xp = @(tt) ((r * cos(beta) * [1 0 0 0]*(LTI.A* x(:,int8(tt/0.05)+1) + LTI.B*u(int8(tt/0.05)+1))) + (l * sin([0 0 1 0]*(LTI.A* x(:,int8(tt/0.05)+1) + LTI.B*u(int8(tt/0.05)+1)))));
+yp = @(tt) ((r * sin(beta) * [1 0 0 0]*(LTI.A* x(:,int8(tt/0.05)+1) + LTI.B*u(int8(tt/0.05)+1))) + (l * cos([0 0 1 0]*(LTI.A* x(:,int8(tt/0.05)+1) + LTI.B*u(int8(tt/0.05)+1)))));
 
+figure;
+axis equal;
+hold on;
+fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(1) xw(tt)],[yw(1) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xp(tt)],[yw(tt) yp(tt)],'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
+hold off;
 
 %% Function definitions
 
