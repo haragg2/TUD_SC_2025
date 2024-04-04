@@ -1,6 +1,12 @@
 clc;
 clear;
+close all;
 addpath('functions/');
+
+% Set Latex interpreter for plots
+set(groot,'defaulttextinterpreter','latex');  
+set(groot, 'defaultAxesTickLabelInterpreter','latex');  
+set(groot, 'defaultLegendInterpreter','latex');
 
 % Model Parameters
 m_w = 1.5;          % kg; mass of wheel
@@ -20,6 +26,8 @@ theta_p_eq = asin((m_w + m_p) * r * sin(beta) / (m_p * l));    % 1.73 degrees; p
 theta_pd_eq = 0;
 
 Ts = 0.05;           % s; sampling time
+T_sim = 10;          % s; simulation time
+T = 0:Ts:T_sim;      % simulation time steps
 
 % Linearizing the model
 sys_cont = sys_dyn(m_w, m_p, l, r, g, beta, J);
@@ -27,51 +35,70 @@ sys_cont = sys_dyn(m_w, m_p, l, r, g, beta, J);
 % Discretize the system
 sys_dis = c2d(sys_cont, Ts, 'zoh');
 
+LTI.A = sys_dis.A;
+LTI.B = sys_dis.B;
+LTI.C = sys_dis.C;
+LTI.D = sys_dis.D;
+
+%% Bounds
+
+xlb = [-30; (-1 /(r)); (-8*pi/180); (-pi/10)];
+xub = [30; (1 /(r)); (8*pi/180); (pi/10)];
+
+ulb = [-2];
+uub = [2];
+
+N = 10; % Horizon
+%% LQR
+
+close all;
+% Tuning weights
+Q = 1 * eye(size(LTI.A));            % state cost
+R = 16 * eye(length(LTI.B(1,:)));    % input cost
+
 % Controllability check
-ctrb_sys = ctrb(sys_dis.A, sys_dis.B);
-unco = length(sys_dis.A) - rank(ctrb_sys);
+ctrb_sys = ctrb(LTI.A, LTI.B);
+unco = length(LTI.A) - rank(ctrb_sys);
 if unco > 0
     warning('Discretized linear model is uncontrollable');
 end
 
 % Observability check
-obs_sys = obsv(sys_dis.A, sys_dis.C);
-unob = length(sys_dis.A) - rank(obs_sys);
+obs_sys = obsv(LTI.A, LTI.C);
+unob = length(LTI.A) - rank(obs_sys);
 if unob > 0
     warning('Discretized linear model is unobservable');
 end
 
-LTI.A = sys_dis.A;
-LTI.B = sys_dis.B;
-LTI.C = sys_dis.C;
+% Check if (A, Q') has no unobservable modes on the unit circle
+isNoUnobservableModes = rank(ctrb(LTI.A, transpose(Q))) == size(LTI.A,1);
+if isNoUnobservableModes == 0
+    warning("Pair (A, Q') has some unobservable modes");
+end
 
-% Tuning weights
-Q = 1 * eye(size(LTI.A));            % state cost
-R = 1 * eye(length(LTI.B(1,:)));    % input cost
 
-% [S_lqr_cost, K_lqr, ~] = idare(LTI.A, LTI.B, Q, R);
-[K_lqr, S_lqr_cost] = dlqr(LTI.A, LTI.B, Q, R);
+[S_lqr_cost, K_lqr, ~] = idare(LTI.A, LTI.B, Q, R);
+% [K_lqr, S_lqr_cost] = dlqr(LTI.A, LTI.B, Q, R);
 K_lqr = -K_lqr;
 A_K = LTI.A + LTI.B * K_lqr;
 
+% x0 = [-27.2; 17.7; -0.13; 0.21]; % In terminal set Xf
+x0 = [29.4; -18.1; 0.13; -0.28]; % In terminal set Xf
 
-%% LQR
+sysd_lqr = ss(A_K, [], LTI.C, LTI.D, Ts);
+u = zeros(size(T));
+lsim(sysd_lqr, u, T, x0);
 
+[~, t_LQ, x_LQ] = lsim(sysd_lqr, u, T, x0);
+u_LQ = K_lqr * x_LQ';
 
+figure;
+plot(t_LQ, u_LQ);
+title('Control Input for LQ Control');
+xlabel('Time (seconds)');
+ylabel('Control Input');
+grid on;
 
-%%
-
-% Bounds.
-xlb = [-30; (-1 /(r)); (-8*pi/180); (-pi/10)];
-xub = [30; (1 /(r)); (8*pi/180); (pi/10)];
-% xlb = [-inf(); -inf(); -inf(); -inf()];
-% xub = [inf(); inf(); inf(); inf()];
-ulb = [-1];
-uub = [1];
-% ulb = [-inf()];
-% uub = [inf()];
-
-N = 10; % Horizon
 %% Compute X_f.
 
 Xn = struct();
@@ -79,12 +106,11 @@ V = struct();
 Z = struct();
 
 [Xn.('lqr'), V.('lqr'), Z.('lqr')] = findXn(LTI.A, LTI.B, K_lqr, N, xlb, xub, ulb, uub, 'lqr');
-%%
+
 Xf = Xn.lqr{1};
 X1 = Xn.lqr{2};
 X2 = Xn.lqr{9};
-
-%%
+%% Plot Xf and Xn
 
 % Generate 100000 random points within the specified bounds
 num_points = 1000000;
@@ -102,8 +128,8 @@ plot(x_samples(1, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'yo',
 plot(x_samples(1, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
 plot(x_samples(1, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
-xlabel('x1');
-ylabel('x2');
+xlabel('$\theta_{w}$');
+ylabel('$\theta_{p}$');
 title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
@@ -114,8 +140,8 @@ plot(x_samples(2, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'yo',
 plot(x_samples(2, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
 plot(x_samples(2, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
-xlabel('x1');
-ylabel('x2');
+xlabel('$\dot{\theta_{w}}$');
+ylabel('$\theta_{p}$');
 title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
@@ -125,8 +151,8 @@ plot(x_samples(4, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'yo',
 plot(x_samples(4, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
 plot(x_samples(4, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
-xlabel('x1');
-ylabel('x2');
+xlabel('$\dot{\theta_{p}$');
+ylabel('$\theta_{p}$');
 title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
@@ -136,13 +162,10 @@ plot(x_samples(2, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'yo',
 plot(x_samples(2, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
 plot(x_samples(2, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
-xlabel('x1');
-ylabel('x2');
+xlabel('$\dot{\theta_{w}$');
+ylabel('$\theta_{w}$');
 title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
-
-
-
 
 
 %%

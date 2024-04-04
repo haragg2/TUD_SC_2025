@@ -41,6 +41,7 @@ theta_p_eq = asin((m_w + m_p) * R * sin(beta) / (m_p * l));
 t_end = 10;
 
 initCond = [0.1 0 theta_p_eq 0];
+initCond = [29.4; -18.1; 0.13; -0.28];
 sols = ode45(M, [0 t_end], initCond);
 
 figure;
