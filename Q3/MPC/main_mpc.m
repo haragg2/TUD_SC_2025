@@ -51,7 +51,6 @@ uub = [2];
 N = 10; % Horizon
 %% LQR
 
-close all;
 % Tuning weights
 Q = 1 * eye(size(LTI.A));            % state cost
 R = 16 * eye(length(LTI.B(1,:)));    % input cost
@@ -109,7 +108,7 @@ Z = struct();
 
 Xf = Xn.lqr{1};
 X1 = Xn.lqr{2};
-X2 = Xn.lqr{9};
+X2 = Xn.lqr{10};
 %% Plot Xf and Xn
 
 % Generate 100000 random points within the specified bounds
@@ -140,8 +139,8 @@ plot(x_samples(2, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'yo',
 plot(x_samples(2, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
 plot(x_samples(2, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
-xlabel('$\dot{\theta_{w}}$');
-ylabel('$\theta_{p}$');
+xlabel('$$\dot{\theta_{w}}$$');
+ylabel('$$\theta_{p}$$');
 title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
@@ -151,7 +150,7 @@ plot(x_samples(4, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'yo',
 plot(x_samples(4, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
 plot(x_samples(4, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
-xlabel('$\dot{\theta_{p}$');
+xlabel('$$\dot{\theta_{p}}$$');
 ylabel('$\theta_{p}$');
 title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
@@ -162,81 +161,112 @@ plot(x_samples(2, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'yo',
 plot(x_samples(2, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
 plot(x_samples(2, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
-xlabel('$\dot{\theta_{w}$');
+xlabel('$$\dot{\theta_{w}}$$');
 ylabel('$\theta_{w}$');
 title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
 
-%%
-% % computes a control invariant set for LTI system x^+ = A*x+B*u
-% system = LTISystem('A', A_K);
-% system.x.min = [-50; -50; -50; -50];
-% system.x.max = [50; 50; 50; 50];
-% system.u.min = [-10];
-% system.u.max = [10];
-% InvSet = system.invariantSet()
-% InvSet.plot()
+%% Linear MPC - Regulation
 
-
+% Solves the following optimization problem:
+%
+%      N-1
+% min  sum [ 1/2(u_k' H u_k + d u_k ) ]
+% u_k  k=0
+%
+%    s.t    G x_k + H u_k <= psi (states and control input constraints)
+%           A_f x_N <= b_f (terminal constraint)
 
 Qbar = kron(Q,eye(N));
 Rbar = kron(R,eye(N));
 
 % Defines the dimensions
-dim.N = N;
-dim.nx = size(LTI.A, 1);
-dim.nu = size(LTI.B, 2);
-[P, Z, W] = predmodgen(LTI,dim);
+dim.N = N;                      % Horizon
+dim.nx = size(LTI.A, 1);        % Number of states
+dim.nu = size(LTI.B, 2);        % Number of inputs
 
-x0 = [0.1, 0, 0.1, 0]';
-H = (Z'*Qbar*Z + Rbar + 2*W'*S_lqr_cost*W);
-d = (x0'*P'*Qbar*Z + 2*x0'*(LTI.A^N)'*S_lqr_cost*W)';
+% Verified - its correct
+[P, S, W] = predmodgen(LTI,dim);
 
-T = N/Ts;
-x_lim_vec_full = repmat([5; 5; 5; 5], [N 1]);
+x0 = [16.9, 3.89, -0.11, -0.09]';                       % initial state for MPC (should be from set Xn)
+% x0 = [29.4; -18.1; 0.13; -0.28]; % In terminal set Xf
 
-x = zeros(length(LTI.A(:,1)),T);    % state trajectory
-x(:,1) = x0;
-u = zeros(length(LTI.B(1,:)),T);    % control inputs
-% y = zeros(length(LTI.C(:,1)),T);    % measurements 
-t = zeros(1,T);                 % time vector
+H = (S'*Qbar*S + Rbar + 2*W'*S_lqr_cost*W);             % Hessian for quadratic cost in inputs
+d = (x0'*P'*Qbar*S + 2*x0'*(LTI.A^N)'*S_lqr_cost*W)';   % linear term for cost in inputs
 
-u_limit = 2;
-% for k = 1:1:T
-%     t(k) = (k-1) * Ts;
-%     if ( mod(t(k), 1) == 0 )
-%         fprintf('t = %d sec \n', t(k));
-%     end
-% 
-%     % determine reference states based on reference input r
-%     x0 = x(:,k);
-%     d = (x0'*P'*Qbar*Z + 2*x0'*(LTI.A^N)'*S_lqr_cost*W)';
-% 
-%     % compute control action
-%     cvx_begin quiet
-%         variable u_N(1*N)
-%         minimize ( (1/2)*quad_form(u_N,H) + d'*u_N )
-%         % input constraints
-%         u_N <=  u_limit*ones(1*N,1);
-%         u_N >= -u_limit*ones(1*N,1);
-%         % state constraints
-%         Z*u_N <= -P*x0 + x_lim_vec_full;
-%         Z*u_N >= -P*x0 - x_lim_vec_full; 
-%     cvx_end
-% 
-%     u(:,k) = u_N(1:1); % MPC control action
-% 
-%     % apply control action
-%     x(:,k+1) = LTI.A*x(:,k) + LTI.B*u(:,k); % + B_ref*r(:,k);
-%     % y(:,k) = C*x(:,k);
-% 
-%     [X,K, ~] = idare(LTI.A,LTI.B,Q,R);
-%     Vf(k) = 0.5*x(:,k)'*X*x(:,k);
-%     l(k) = 0.5*x(:,k)'*Q*x(:,k) + 0.1*u(:,k)'*R*u(:,k);
-% end
-% 
-% plot(t, x(1, 1:200));
+G_N = kron(eye(N), Z.('lqr').('G'));
+H_N = kron(eye(N), Z.('lqr').('H'));
+psi_N = repmat(Z.('lqr').('psi'), 10, 1);
+
+x = zeros(length(LTI.A(:,1)), size(T, 2));      % state trajectory
+x(:,1) = x0;                                    % set first state as x0
+
+u = zeros(length(LTI.B(1,:)), size(T, 2));      % control inputs
+% y = zeros(length(LTI.C(:,1)),T);              % measurements 
+t = zeros(1, size(T, 2));                       % time vector
+LV = zeros(1, size(T, 2));                      % Lyapunov function value at every x
+Vf = zeros(1, size(T, 2));
+% l = zeros(1, size(T, 2));
+
+for k = 1:1:size(T, 2)
+    t(k) = (k-1) * Ts;
+    if ( mod(t(k), 1) == 0 )
+        fprintf('t = %d sec \n', t(k));
+    end
+
+    % determine reference states based on reference input r
+    x0 = x(:, k);
+    d = (x0'*P'*Qbar*S + 2*x0'*(LTI.A^N)'*S_lqr_cost*W)';
+
+    % % compute control action
+    % cvx_begin quiet
+    %     variable u_N(1*N)
+    %     minimize ( (1/2)*quad_form(u_N,H) + d'*u_N )
+    % 
+    %     % state-input constraints
+    %     (G_N * S + H_N) * u_N <= psi_N - G_N * (P*x0);
+    %     % terminal constraints
+    %     Xf.A * W * u_N <= Xf.b - Xf.A * LTI.A^N * x0;
+    % cvx_end
+
+    Options = sdpsettings('verbose', 0, 'solver', 'quadprog');
+    u_N_ = sdpvar(N, 1);                % define optimization variable
+
+    Constraint = [(G_N * S + H_N) * u_N_ <= (psi_N - G_N * (P*x0));
+                  Xf.A * W * u_N_ <= Xf.b - Xf.A * LTI.A^N * x0];   %define constraints
+
+    Objective = 0.5*(u_N_' * H * u_N_) + d' * u_N_;  %define cost function
+
+    diagnostic = optimize(Constraint, Objective, Options);  %solve the problem
+    u_N = value(u_N_);                  %assign the solution to uopt
+    FVAL = 0.5 * (u_N' * H * u_N) + d' * u_N;
+    status.optimal = diagnostic.problem;
+
+    u(:,k) = u_N(1:1); % MPC control action
+
+    % apply control action
+    x(:,k+1) = LTI.A*x(:,k) + LTI.B*u(:,k);
+    % y(:,k) = C*x(:,k);
+
+    LV(k) = FVAL;
+    Vf(k) = 0.5 * (x(:,k)' * S_lqr_cost * x(:,k));
+    % l(k) = 0.5*x(:,k)'*Q*x(:,k) + 0.5*u(:,k)'*R*u(:,k);
+end
+
+%%  Simulation of regulation
+x0 = [16.9, 3.89, -0.11, -0.09]';
+figure;
+lsim(sysd_lqr, u, T, x0);
+
+xw = (r * cos(beta) * x(1, 1:size(T, 2)));
+yw = (r * sin(beta) * x(1, 1:size(T, 2)));
+
+xp = xw + (l * sin(x(3, 1:size(T, 2))));
+yp = yw + (l * cos(x(3, 1:size(T, 2))));
+
+
+%% Function definitions
 
 function sys_cont = sys_dyn(m_w, m_p, l, R, g, beta, J)
  
@@ -267,7 +297,7 @@ function sys_cont = sys_dyn(m_w, m_p, l, R, g, beta, J)
 end
 
 
-function [P,Z,W] = predmodgen(LTI,dim)
+function [P,S,W] = predmodgen(LTI,dim)
 
     % Prediction matrices generation
     % This function computes the prediction matrices to be used in the
@@ -280,10 +310,10 @@ function [P,Z,W] = predmodgen(LTI,dim)
     end
 
     % Prediction matrix from input
-    Z = zeros(dim.nx * dim.N, dim.nu * dim.N);
+    S = zeros(dim.nx * dim.N, dim.nu * dim.N);
     for k = 1:dim.N-1
         for i = 0:k-1
-            Z(k*dim.nx+1:(k+1)*dim.nx, i*dim.nu+1:(i+1)*dim.nu) = LTI.A^(k-1-i) * LTI.B;
+            S(k*dim.nx+1:(k+1)*dim.nx, i*dim.nu+1:(i+1)*dim.nu) = LTI.A^(k-1-i) * LTI.B;
         end
     end
 
