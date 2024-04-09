@@ -11,7 +11,7 @@ m_p = 6.16;         % kg; mass of pendulum
 l = 0.46;           % m; distance between COG of pendulum and center of wheel
 r = 0.054;          % m; radius of wheel
 g = 9.81;           % m/s^2; gravity
-J = 0.1;            % kgm^2; wheel centroidal inertia?
+J = 0.1;            % kgm^2; wheel centroidal inertia
 
 % The slope can be modified
 beta = 10 * (pi/180);       % 10 degrees; slope angle
@@ -51,6 +51,7 @@ N = 5; % Horizon
 dim.nx = size(sys_dis.A, 1);        % Number of states
 dim.nu = size(sys_dis.B, 2);        % Number of inputs
 dim.ny = size(sys_dis.C, 1);        % Number of outputs
+
 %% LQR
 
 % Tuning weights
@@ -85,10 +86,11 @@ end
 A_K = A + B * K;
 
 x0 = [29.4; -18.1; 0.13; -0.28]; % In terminal set Xf
-
+%x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN - control input exceeds constraints
 sysd_lqr = ss(A_K, [], C, D, Ts);
 u = zeros(size(T));
 figure;
+grid on;
 lsim(sysd_lqr, u, T, x0);
 
 [~, t_LQ, x_LQ] = lsim(sysd_lqr, u, T, x0);
@@ -176,39 +178,42 @@ constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
-Nsim = 25;
+x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
+xr = [0; 0; 0; 0]; % referece x set to 0
 
-xsim = zeros(dim.nx, Nsim + 1);
-xsim(:,1) = [16.9, 3.89, -0.11, -0.09]';
-usim = zeros(dim.nu, Nsim);
+x = zeros(dim.nx, size(T, 2));
+x(:,1) = x0;
+
+usim = zeros(dim.nu, size(T, 2)-1);
 V_N = zeros(size(T, 2)-1,1);
 mpcmats = []; % Calculated first time and then reused
 
+
 for t = 1:1:size(T, 2)-1
-    model.x0 = xsim(:,t);
-    [xk, uk, FVAL, status, mpcmats] = linearmpc(0,model, constraint, penalty, ...
+    model.x0 = x(:,t);
+    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,0,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
     usim(:,t) = uk(:,1);
-    xsim(:,t + 1) = xk(:,2);
     V_N(t) = FVAL;
     tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(xsim(:,t), tspan, u(:,t));
+    x(:,t+1) = NLSystemDynamics(xk(:,1), tspan, usim(:,t));
 end
 
 figure;
 plot(V_N);
 title("Optimal Cost funcion V_N^0");
+grid on;
 
 figure;
+title("Actual State Response");
 subplot(2, 2, 1);
-plot(xsim(1,:), 'LineWidth', 2), grid on;
+plot(x(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(xsim(2,:), 'LineWidth', 2), grid on;
+plot(x(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(xsim(3,:), 'LineWidth', 2), grid on;
+plot(x(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(xsim(4,:), 'LineWidth', 2), grid on;
-title("State Response");
+plot(x(4,:), 'LineWidth', 2), grid on;
 
 figure;
 plot(usim, 'LineWidth', 2), grid on;
@@ -216,7 +221,6 @@ title("Control Input");
 
 %%  Simulation of regulation
 
-x(3,:) = x(3,:) + theta_p_eq;
 % Non-linear equations
 xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/0.05)+1)));
 yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/0.05)+1)));
@@ -224,19 +228,29 @@ yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/0.05)+1)));
 xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/0.05)+1)) + (l * sin(x(3, (uint16(tt/0.05)+1))))));
 yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/0.05)+1)) + (l * cos(x(3, (uint16(tt/0.05)+1))))));
 
+scaling_factor = 0.6;
+angle = -pi/3; % Example angle of 45 degrees
+
 figure;
 axis equal;
 hold on;
 fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt) xp(tt)],[yw(tt) yp(tt)],'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
+
+% Plot the L-shaped line
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+
+% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
+
 
 %% MPC - Reference Tracking
 
 yref = [6; 0; 0; 0];
+
+% Calculate xref, uref
 eqconstraints.A = [eye(dim.nx) - A, -B; C, zeros(dim.ny, dim.nu)];
 eqconstraints.b = [zeros(dim.nx, 1); yref];
 
@@ -255,45 +269,44 @@ xr = xur(1:dim.nx);
 ur = xur(dim.nx+1:end);
 ref = [repmat([xr;ur],N,1); xr];
 
-xsim = zeros(dim.nx, Nsim + 1);
-xsim(:,1) = [16.9, 3.89, -0.11, -0.09]'; % initial condition
-
-usim = zeros(dim.nu, Nsim);
+x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
+x(:,1) = x0; % initial condition
+usim = zeros(dim.nu, size(T, 2)-1);
 mpcmats = []; % Calculated first time and then reused
 
 for t = 1:1:size(T, 2)-1
-    model.x0 = xsim(:,t);
-    [xk, uk, FVAL, status, mpcmats] = linearmpc(ref,model, constraint, penalty, ...
+    model.x0 = x(:,t);
+    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
     usim(:,t) = uk(:,1);
-    xsim(:,t + 1) = xk(:,2);
     V_N(t) = FVAL;
     tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(xsim(:,t), tspan, u(:,t));
+    x(:,t+1) = NLSystemDynamics(xk(:,1), tspan, usim(:,t));
 end
 
 figure;
 plot(V_N);
 title("Optimal Cost funcion V_N^0");
+grid on;
 
 figure;
+title("Actual State Response");
 subplot(2, 2, 1);
-plot(xsim(1,:), 'LineWidth', 2), grid on;
+plot(x(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(xsim(2,:), 'LineWidth', 2), grid on;
+plot(x(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(xsim(3,:), 'LineWidth', 2), grid on;
+plot(x(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(xsim(4,:), 'LineWidth', 2), grid on;
-title("State Response");
+plot(x(4,:), 'LineWidth', 2), grid on;
 
 figure;
 plot(usim, 'LineWidth', 2), grid on;
 title("Control Input");
+grid on;
 
 %% Simulation of reference
 
-x(3,:) = x(3,:) + theta_p_eq;
 % Non-linear equations
 xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/0.05)+1)));
 yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/0.05)+1)));
@@ -306,25 +319,28 @@ axis equal;
 hold on;
 fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt) xp(tt)],[yw(tt) yp(tt)],'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
+
+% Plot the L-shaped line
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+
+% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
 
 %% Output feedback
 
-
 Bd = B;
-C = [1 0 0 0; 0 0 1 0; 0 0 0 1];
+C_out = [1 0 0 0; 0 0 1 0; 0 0 0 1];
 Cd = [0.5; 0; 0];
 
-if (rank([eye(dim.nx) - A -Bd; C Cd]) - dim.nx - 1) ~= 0 && rank(obsv(A,C) ~= dim.nx)
+if ((rank([eye(dim.nx) - A -Bd; C_out Cd]) - dim.nx - 1) ~= 0) || (rank(obsv(A,C_out)) ~= dim.nx)
     warning ('Augmented state is not observable');
 end
 
 aug_sys.A = [A Bd; zeros(1,dim.nx) eye(1,size(Bd,2))];
 aug_sys.B = [B;zeros(1,size(B,2))];
-aug_sys.C = [C Cd];
+aug_sys.C = [C_out Cd];
 
 obs_poles = [0.5*pole(sysd_lqr); 0.5];
 L_obs = place(aug_sys.A', aug_sys.C', obs_poles)';
@@ -333,103 +349,99 @@ if abs(eig(aug_sys.A - L_obs*aug_sys.C)) >= 1
     warning ('Observer is not stable');
 end
 
-% L1 = L_obs(1:dim.nx,:);
-% L2 = L_obs(end,:);
-
-% aug_obs.A = [aug_sys.A zeros(size(aug_sys.A)); 
-%             L1*C L1*Cd A-L1*C Bd-L1*Cd; 
-%             L2*C L2*Cd -L2*C 1-L2*Cd];
-% aug_obs.B = [B; 0; B; 0];
-% aug_obs.C = [zeros(1, size(aug_obs.A,1)-1) 1]; % measure the estimated disturbance
-%obs_cl = ss(aug_sys.A, aug_sys.B, aug_sys.C, [], Ts);
-
-% Hr = (S'*Qbar*S + Rbar + 2*W'*S_lqr_cost*W);    % Hessian for quadratic cost in inputs
-
-x0 = [10.9, 3.89, 0, -0.09]';
-x0 = [0.5, 0, 0.08, 0]';
-% x = zeros(length(A(:,1)), size(T, 2));      % state trajectory
-% x(:,1) = x0;                                    % set first state as x0
-
-% u = zeros(length(B(1,:)), size(T, 2));      % control inputs
-% t = zeros(1, size(T, 2));                       % time vector
-% LV = zeros(1, size(T, 2));                    % Lyapunov function value at every x
-
 disturbance = 1.5;
-yref = [6; 0; 0];
-
-% aug_obs_x = [];
-% aug_obs_x(:,1) = [x0', disturbance, 0, 0, 0, 0, 0]';
 d_hat = 0;
 
-ye = zeros(length(yref),size(T, 2));
+yref = [10; 0; 0];
+
+xr = zeros(dim.nx,1);
+ur = [];
+
+ye = zeros(length(yref),size(T, 2)-1);
 ye(:,1)=aug_sys.C*[x0; disturbance];
 
-xehat=zeros(dim.nx+1, size(T, 2));
-xehat(:,1)=[0, 0, 0, 0, 0];
+xehat = zeros(dim.nx+1, size(T, 2));
+xehat(:,1)=[0, 0, 0, 0, d_hat];
 
-xsim = zeros(dim.nx, size(T, 2));
-xsim(:,1) = x0; % initial condition
+x0 = [1, 0, 0.08, 0]';
+x(:,1) = x0;
 
 usim = zeros(dim.nu, size(T, 2)-1);
-mpcmats = []; % Calculated first time and then reused
-d_est = [];
+d_est = zeros(1,size(T, 2)-1);
+mpcmats = [];
+
+H = blkdiag(zeros(dim.nx), eye(dim.nu));
+h = zeros(dim.nx+dim.nu, 1);
+    
+options1 = optimoptions(@quadprog); 
+options1.OptimalityTolerance=1e-20;
+options1.ConstraintTolerance=1.0000e-15;
+options1.Display='off';
+
 for t = 1:1:size(T, 2)-1
 
-    d_hat = xehat(end,t)
+    d_hat = xehat(end,t);
     d_est(t) = d_hat;
-    
-    eqconstraints.A = [eye(dim.nx) - A, -B; C, zeros(size(C, 1), dim.nu)];
+    dist = repmat((Bd*d_hat),N,1);
+
+    eqconstraints.A = [eye(dim.nx) - A, -B; C_out, zeros(size(C_out, 1), dim.nu)];
     eqconstraints.b = [Bd*d_hat; yref-(Cd*d_hat)];
     
-    ineqconstraints.A = [Z.('lqr').('G'), Z.('lqr').('H')];
-    ineqconstraints.b = Z.('lqr').('psi');
-    
-    H = blkdiag(zeros(dim.nx), eye(dim.nu));
-    h = zeros(dim.nx+dim.nu, 1);
-    
-    options1 = optimoptions(@quadprog); 
-    options1.OptimalityTolerance=1e-20;
-    options1.ConstraintTolerance=1.0000e-15;
-    %options1.Display='off';
-    xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
-    xr = xur(1:dim.nx)
-    ur = xur(dim.nx+1:end)
+    xur=quadprog(H,h,[],[],eqconstraints.A,eqconstraints.b,[],[],[],options1);
+    xr = xur(1:dim.nx);
+    ur = xur(dim.nx+1:end);
     ref = [repmat([xr;ur],N,1); xr];
     
-    model.x0 = xehat(1:end-1,t);
-    [xk, uk, FVAL, status, mpcmats] = linearmpc(ref, model, constraint, penalty, ...
-                                             terminal, mpcmats);
+    model.x0 = x(:,t); % xehat(1:end-1,t);
+
+    [xk, uk, FVAL, status] = linearmpc(xr,ref, dist, model, constraint, penalty, ...
+                                             terminal, []);
     usim(:,t) = uk(:,1);
-    xsim(:,t + 1) = xk(:,2);
-    ye(:,t+1) = aug_sys.C * [xsim(:,t + 1); disturbance];
+
+    tspan = [T(t), T(t+1)];
+    x(:,t+1) = NLSystemDynamics(xk(:,1), tspan, usim(:,t)+disturbance); % given that Bd = B
+    ye(:,t) = aug_sys.C * [x(:,t); disturbance];
     xehat(:,t+1) = aug_sys.A*xehat(:,t) + aug_sys.B*usim(:,t) + L_obs*(ye(:,t) - (aug_sys.C*xehat(:,t)));
     V_N(t) = FVAL;
-
-    % x(:,k+1) = NLSystemDynamics(x0, tspan, u(:,k) + disturbance);
-
    
-    tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(xsim(:,t), tspan, u(:,t)+disturbance);
 end
+
 figure;
 plot(d_est);
 title("Estimated Disturbance");
-
+grid on;
 
 figure;
 plot(V_N);
 title("Optimal Cost funcion V_N^0");
+grid on;
 
 figure;
+title("Estimated State Response");
 subplot(2, 2, 1);
-plot(xsim(1,:), 'LineWidth', 2), grid on;
+plot(xehat(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(xsim(2,:), 'LineWidth', 2), grid on;
+plot(xehat(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(xsim(3,:), 'LineWidth', 2), grid on;
+plot(xehat(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(xsim(4,:), 'LineWidth', 2), grid on;
-title("State Response");
+plot(xehat(4,:), 'LineWidth', 2), grid on;
+
+figure;
+title("Actual State Response");
+subplot(2, 2, 1);
+plot(x(1,:), 'LineWidth', 2), grid on;
+subplot(2, 2, 2);
+plot(x(2,:), 'LineWidth', 2), grid on;
+subplot(2, 2, 3);
+plot(x(3,:), 'LineWidth', 2), grid on;
+subplot(2, 2, 4);
+plot(x(4,:), 'LineWidth', 2), grid on;
+
+
+figure;
+plot(ye(1,:), 'LineWidth', 2), grid on;
+title("Output");
 
 figure;
 plot(usim, 'LineWidth', 2), grid on;
@@ -437,7 +449,6 @@ title("Control Input");
 
 %% Simulation of output feedback
 
-x(3,:) = x(3,:) + theta_p_eq;
 % Non-linear equations
 xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/0.05)+1)));
 yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/0.05)+1)));
@@ -450,12 +461,17 @@ axis equal;
 hold on;
 fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt) xp(tt)],[yw(tt) yp(tt)],'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
+
+% Plot the L-shaped line
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+
+% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
 
 %% Functions
+
 function sys_cont = sys_dyn(m_w, m_p, l, R, g, beta, J)
  
     theta_pd = asin((m_w + m_p) * R * sin(beta) / (m_p * l));    % pendulum desired angle at eq

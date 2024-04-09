@@ -1,4 +1,4 @@
-function [Xk, Uk, phi, status, matrices] = linearmpc(ref, model, constraint, penalty, terminal, matrices)
+function [Xk, Uk, phi, status, matrices] = linearmpc(xr,ref, dist, model, constraint, penalty, terminal, matrices)
 % [Xk, Uk, phi, status, matrices] = linearmpc(model, constraint, penalty, terminal, [matrices])
 %
 % Solves the following optimization problem:
@@ -41,7 +41,7 @@ function [Xk, Uk, phi, status, matrices] = linearmpc(ref, model, constraint, pen
 % you're solving the same problem over and over but with different initial
 % conditions. Note that minimal error checking is done
 
-matrices = buildmatrices(model, constraint, penalty, terminal);
+matrices = buildmatrices(xr,model, constraint, penalty, terminal);
 
 % Get sizes.
 [numx, numu] = size(model.B);
@@ -61,8 +61,8 @@ Options = sdpsettings('verbose',0,'solver','quadprog');
 
 x_ = sdpvar(length(matrices.f),1);                % define optimization variable
 
-Constraint = [matrices.Alt*(x_ - ref) <= matrices.blt;
-              matrices.Aeq*(x_ - ref) == matrices.beq;
+Constraint = [matrices.Alt*(x_) <= matrices.blt; %matrices.Alt*(x_ - ref) <= matrices.blt;
+              matrices.Aeq*(x_) + dist == matrices.beq;
               x_ <= matrices.ub;
               x_ >= matrices.lb];                  %define constraints
 
@@ -70,14 +70,13 @@ Objective = 0.5*(x_ - ref)'*matrices.H*(x_ - ref) + matrices.f'*(x_ - ref);  %de
 
 diagnostic = optimize(Constraint,Objective, Options);  %solve the problem
 X = value(x_);                  %assign the solution to uopt
-FVAL = 0.5*X'*matrices.H*X + matrices.f'*X;
+FVAL = 0.5*(X-ref)'*matrices.H*(X-ref) + matrices.f'*(X-ref);
 status.optimal = diagnostic.problem; 
 
 
 % Extract x and u from quadprog X.
 Xk = reshape(X(xinds), numx, N + 1);
 Uk = reshape(X(uinds), numu, N);
-
 phi = FVAL;
 
 end%function
@@ -86,7 +85,7 @@ end%function
 % Helper function for building matrices.
 % ******************************************************************************
 
-function matrices = buildmatrices(model, constraint, penalty, terminal)
+function matrices = buildmatrices(xr,model, constraint, penalty, terminal)
 % matrices = buildmatrices(model, constraint, penalty, terminal)
 %
 % Returns the matrices struct used by the main function.
@@ -176,7 +175,7 @@ UB = inf*ones(numVar,1);
 % Decide terminal constraint.
 if isstruct(terminal) && all(isfield(terminal, {'A', 'b'}))
     Af = terminal.A;
-    bf = terminal.b;
+    bf = terminal.b + Af*xr;
     bigAlt = [bigAlt; [zeros(size(Af, 1), numVar - numx), Af]];
     bigblt = [bigblt; bf];
 elseif isvector(terminal) && length(terminal) == numx
