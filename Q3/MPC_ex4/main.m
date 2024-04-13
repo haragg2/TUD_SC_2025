@@ -2,6 +2,11 @@ clear all
 close all
 clc
 
+% Set Latex interpreter for plots
+set(groot,'defaulttextinterpreter','latex');  
+set(groot, 'defaultAxesTickLabelInterpreter','latex');  
+set(groot, 'defaultLegendInterpreter','latex');
+
 %% Model definition
 
 % Model Parameters
@@ -22,7 +27,7 @@ theta_d_eq = 0;
 theta_p_eq = asin((m_w + m_p) * r * sin(beta) / (m_p * l));    % pendulum desired angle
 theta_pd_eq = 0;
 
-Ts = 0.05;           % s; sampling time
+Ts = 0.1;           % s; sampling time
 T_sim = 10;          % s; simulation time
 T = 0:Ts:T_sim;      % simulation time steps
 
@@ -39,13 +44,14 @@ D = sys_dis.D;
 
 %% Bounds
 
-xlb = [-30; (-1 /(r)); (-8*pi/180); (-pi/10)];
-xub = [30; (1 /(r)); (8*pi/180); (pi/10)];
+xlb = [-30; -10; (-10*pi/180); (-pi/15)];
 
+%xub = [30; (1 /(r)); (8*pi/180); (pi/10)];
+xub = -xlb;
 ulb = [-2];
 uub = [2];
 
-N = 5; % Horizon
+N = 15; % Horizon
 
 % Defines the dimensions
 dim.nx = size(sys_dis.A, 1);        % Number of states
@@ -55,7 +61,8 @@ dim.ny = size(sys_dis.C, 1);        % Number of outputs
 %% LQR
 
 % Tuning weights
-Q = 1 * eye(size(A));            % state cost
+Q = diag([10, 0.01, 1000, 1000]);     % state cost
+%Q = eye(size(A));
 R = 16 * eye(length(B(1,:)));    % input cost
 
 % Find LQR
@@ -85,8 +92,7 @@ end
 
 A_K = A + B * K;
 
-x0 = [29.4; -18.1; 0.13; -0.28]; % In terminal set Xf
-%x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN - control input exceeds constraints
+x0 = [29.4; -18.1; 0.13; -0.28];
 sysd_lqr = ss(A_K, [], C, D, Ts);
 u = zeros(size(T));
 figure;
@@ -115,9 +121,9 @@ Z = struct();
 Xf = Xn.lqr{1};
 X1 = Xn.lqr{floor(N/2)};
 X2 = Xn.lqr{N+1};
-
+%%
 % Generate 100000 random points within the specified bounds
-num_points = 100000;
+num_points = 500000;
 x_samples = bsxfun(@plus, xlb, bsxfun(@times, rand(numel(xlb), num_points), (xub - xlb)));
 
 % Check if Ax <= b is satisfied for each point
@@ -177,15 +183,23 @@ model = struct('A', A, 'B', B, 'N', N);
 constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
-
-x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
+%%
+%x0 = [9.98, -15.02, 0.08, 0.22];
+x0 = [4.8, -9.02, 0.08, 0.15]';
+x0 = [-17.5, 09.04, -0.05, -0.17]';
+%x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
 xr = [0; 0; 0; 0]; % referece x set to 0
 
 x = zeros(dim.nx, size(T, 2));
+x_nl = zeros(dim.nx, size(T, 2));
+x_nl(:,1) = x0;
 x(:,1) = x0;
 
 usim = zeros(dim.nu, size(T, 2)-1);
 V_N = zeros(size(T, 2)-1,1);
+V_f = zeros(size(T, 2)-1,1);
+l_xu = zeros(size(T, 2)-1,1);
+l_xu0 = zeros(size(T, 2)-1,1);
 mpcmats = []; % Calculated first time and then reused
 
 
@@ -196,24 +210,39 @@ for t = 1:1:size(T, 2)-1
     usim(:,t) = uk(:,1);
     V_N(t) = FVAL;
     tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(xk(:,1), tspan, usim(:,t));
+    x_nl(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t));
+    x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
+    V_f(t) = 0.5*xk(:,end)'*P*xk(:,end);
+    l_xu(t) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
+    l_xu0(t) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
 end
 
 figure;
-plot(V_N);
-title("Optimal Cost funcion V_N^0");
+plot(V_N, 'LineWidth', 2);
+title("Optimal Cost funcion $V_N^0$");
+grid on;
+
+figure;
+plot(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+title("Control Lypanunov Function");
+grid on;
+
+
+figure;
+plot(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+title("Lypanunov Function Decrease");
 grid on;
 
 figure;
 title("Actual State Response");
 subplot(2, 2, 1);
-plot(x(1,:), 'LineWidth', 2), grid on;
+plot(x_nl(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(x(2,:), 'LineWidth', 2), grid on;
+plot(x_nl(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(x(3,:), 'LineWidth', 2), grid on;
+plot(x_nl(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(x(4,:), 'LineWidth', 2), grid on;
+plot(x_nl(4,:), 'LineWidth', 2), grid on;
 
 figure;
 plot(usim, 'LineWidth', 2), grid on;
@@ -222,14 +251,14 @@ title("Control Input");
 %%  Simulation of regulation
 
 % Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/0.05)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/0.05)+1)));
+xw = @(tt) (r * cos(beta) * x_nl(1, (uint16(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x_nl(1, (uint16(tt/Ts)+1)));
 
-xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/0.05)+1)) + (l * sin(x(3, (uint16(tt/0.05)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/0.05)+1)) + (l * cos(x(3, (uint16(tt/0.05)+1))))));
+xp = @(tt) ((r * cos(beta) * x_nl(1, (uint16(tt/Ts)+1)) + (l * sin(x_nl(3, (uint16(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x_nl(1, (uint16(tt/Ts)+1)) + (l * cos(x_nl(3, (uint16(tt/Ts)+1))))));
 
 scaling_factor = 0.6;
-angle = -pi/3; % Example angle of 45 degrees
+angle = -pi/3; 
 
 figure;
 axis equal;
@@ -239,8 +268,8 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (uint16(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (uint16(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (uint16(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (uint16(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
@@ -249,7 +278,7 @@ hold off;
 %% MPC - Reference Tracking
 
 yref = [6; 0; 0; 0];
-
+%terminal = Xn.lqr{5};
 % Calculate xref, uref
 eqconstraints.A = [eye(dim.nx) - A, -B; C, zeros(dim.ny, dim.nu)];
 eqconstraints.b = [zeros(dim.nx, 1); yref];
@@ -269,36 +298,53 @@ xr = xur(1:dim.nx);
 ur = xur(dim.nx+1:end);
 ref = [repmat([xr;ur],N,1); xr];
 
-x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
+%x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
+x0 = [9.98, -15.02, 0.08, 0.22];% in Set XN
+%x0 = [-2.8, 2.02, 0.08, 0.25]';
+x0 = [-17.5, 09.04, -0.05, -0.17]';
 x(:,1) = x0; % initial condition
 usim = zeros(dim.nu, size(T, 2)-1);
 mpcmats = []; % Calculated first time and then reused
 
 for t = 1:1:size(T, 2)-1
-    model.x0 = x(:,t);
+    model.x0 = x(:,t); % 
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
     usim(:,t) = uk(:,1);
     V_N(t) = FVAL;
     tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(xk(:,1), tspan, usim(:,t));
+    x_nl(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t));
+    x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
+    V_f(t) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
+    l_xu(t) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
+    l_xu0(t) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
 
 figure;
-plot(V_N);
-title("Optimal Cost funcion V_N^0");
+plot(V_N, 'LineWidth', 2);
+title("Optimal Cost funcion $V_N^0$");
+grid on;
+
+figure;
+plot(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+title("Control Lypanunov Function");
+grid on;
+
+figure;
+plot(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+title("Lypanunov Function Decrease");
 grid on;
 
 figure;
 title("Actual State Response");
 subplot(2, 2, 1);
-plot(x(1,:), 'LineWidth', 2), grid on;
+plot(x_nl(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(x(2,:), 'LineWidth', 2), grid on;
+plot(x_nl(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(x(3,:), 'LineWidth', 2), grid on;
+plot(x_nl(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(x(4,:), 'LineWidth', 2), grid on;
+plot(x_nl(4,:), 'LineWidth', 2), grid on;
 
 figure;
 plot(usim, 'LineWidth', 2), grid on;
@@ -308,11 +354,11 @@ grid on;
 %% Simulation of reference
 
 % Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/0.05)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/0.05)+1)));
+xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/Ts)+1)));
 
-xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/0.05)+1)) + (l * sin(x(3, (uint16(tt/0.05)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/0.05)+1)) + (l * cos(x(3, (uint16(tt/0.05)+1))))));
+xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/Ts)+1)) + (l * sin(x(3, (uint16(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/Ts)+1)) + (l * cos(x(3, (uint16(tt/Ts)+1))))));
 
 figure;
 axis equal;
@@ -322,8 +368,8 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
@@ -349,22 +395,23 @@ if abs(eig(aug_sys.A - L_obs*aug_sys.C)) >= 1
     warning ('Observer is not stable');
 end
 
-disturbance = 1.5;
+disturbance = 0.5;
 d_hat = 0;
 
-yref = [10; 0; 0];
+yref = [6; 0; 0]; %10
 
 xr = zeros(dim.nx,1);
 ur = [];
 
+x0 = [1, 0.8, 0.02, -0.06]';
+%x0 = [-10.5, 5.04, 0.01, -0.17]';
+x(:,1) = x0;
+
 ye = zeros(length(yref),size(T, 2)-1);
-ye(:,1)=aug_sys.C*[x0; disturbance];
+ye(:,1)=aug_sys.C*[x0; disturbance(1)];
 
 xehat = zeros(dim.nx+1, size(T, 2));
-xehat(:,1)=[0, 0, 0, 0, d_hat];
-
-x0 = [1, 0, 0.08, 0]';
-x(:,1) = x0;
+xehat(:,1)=[1; 0; 0; 0; d_hat];
 
 usim = zeros(dim.nu, size(T, 2)-1);
 d_est = zeros(1,size(T, 2)-1);
@@ -392,28 +439,43 @@ for t = 1:1:size(T, 2)-1
     ur = xur(dim.nx+1:end);
     ref = [repmat([xr;ur],N,1); xr];
     
-    model.x0 = x(:,t); % xehat(1:end-1,t);
+    model.x0 = xehat(1:end-1,t);
 
     [xk, uk, FVAL, status] = linearmpc(xr,ref, dist, model, constraint, penalty, ...
                                              terminal, []);
     usim(:,t) = uk(:,1);
 
     tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(xk(:,1), tspan, usim(:,t)+disturbance); % given that Bd = B
+    x(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t)+disturbance); % given that Bd = B
     ye(:,t) = aug_sys.C * [x(:,t); disturbance];
     xehat(:,t+1) = aug_sys.A*xehat(:,t) + aug_sys.B*usim(:,t) + L_obs*(ye(:,t) - (aug_sys.C*xehat(:,t)));
     V_N(t) = FVAL;
-   
+
+
+    %x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
+    V_f(t) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
+    l_xu(t) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
+    l_xu0(t) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
+
+figure;
+plot(V_N, 'LineWidth', 2);
+title("Optimal Cost funcion $V_N^0$");
+grid on;
+
+figure;
+plot(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+title("Control Lypanunov Function");
+grid on;
+
+figure;
+plot(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+title("Lypanunov Function Decrease");
+grid on;   
 
 figure;
 plot(d_est);
 title("Estimated Disturbance");
-grid on;
-
-figure;
-plot(V_N);
-title("Optimal Cost funcion V_N^0");
 grid on;
 
 figure;
@@ -450,11 +512,11 @@ title("Control Input");
 %% Simulation of output feedback
 
 % Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/0.05)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/0.05)+1)));
+xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/Ts)+1)));
 
-xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/0.05)+1)) + (l * sin(x(3, (uint16(tt/0.05)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/0.05)+1)) + (l * cos(x(3, (uint16(tt/0.05)+1))))));
+xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/Ts)+1)) + (l * sin(x(3, (uint16(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/Ts)+1)) + (l * cos(x(3, (uint16(tt/Ts)+1))))));
 
 figure;
 axis equal;
@@ -464,8 +526,8 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/0.05)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/0.05)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
@@ -474,10 +536,10 @@ hold off;
 
 function sys_cont = sys_dyn(m_w, m_p, l, R, g, beta, J)
  
-    theta_pd = asin((m_w + m_p) * R * sin(beta) / (m_p * l));    % pendulum desired angle at eq
+    theta_eq = asin((m_w + m_p) * R * sin(beta) / (m_p * l));    % pendulum angle at eq
      
     a = J + ((m_w + m_p) * R^2);
-    b_eq = m_p * R * l * cos(theta_pd + beta);
+    b_eq = m_p * R * l * cos(theta_eq + beta);
     c =  m_p * l^2;
     %d = (m_w + m_p) * g * R * sin(beta);    % At eq, tau = d
      
