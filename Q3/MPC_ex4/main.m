@@ -45,11 +45,9 @@ D = sys_dis.D;
 %% Bounds
 
 xlb = [-30; -10; (-10*pi/180); (-pi/15)];
-
-%xub = [30; (1 /(r)); (8*pi/180); (pi/10)];
 xub = -xlb;
-ulb = [-2];
-uub = [2];
+ulb = -2;
+uub = 2;
 
 N = 15; % Horizon
 
@@ -62,7 +60,6 @@ dim.ny = size(sys_dis.C, 1);        % Number of outputs
 
 % Tuning weights
 Q = diag([10, 0.01, 1000, 1000]);     % state cost
-%Q = eye(size(A));
 R = 16 * eye(length(B(1,:)));    % input cost
 
 % Find LQR
@@ -121,7 +118,7 @@ Z = struct();
 Xf = Xn.lqr{1};
 X1 = Xn.lqr{floor(N/2)};
 X2 = Xn.lqr{N+1};
-%%
+
 % Generate 100000 random points within the specified bounds
 num_points = 500000;
 x_samples = bsxfun(@plus, xlb, bsxfun(@times, rand(numel(xlb), num_points), (xub - xlb)));
@@ -131,51 +128,54 @@ satisfied_points_Xf = all(Xf.A * x_samples <= Xf.b, 1);
 satisfied_points_X1 = all(X1.A * x_samples <= X1.b, 1);
 satisfied_points_X2 = all(X2.A * x_samples <= X2.b, 1);
 
-% Plot the points that satisfy the condition on the x1-x2 plane
+% Plot the points that satisfy the condition on the 2D plane
 figure;
+sgtitle('Points satisfying $X.A*x <= X.b$ on 2D plane');
+hplots = gobjects(3, 1);
+subplot(2, 2, 1);
 hold on;
-plot(x_samples(1, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-plot(x_samples(1, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
-plot(x_samples(1, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hplots(1) = plot(x_samples(1, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(1, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(1, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
 xlabel('$\theta_{w}$');
 ylabel('$\theta_{p}$');
-title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
-figure;
+subplot(2, 2, 2);
 hold on;
-plot(x_samples(2, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-plot(x_samples(2, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
-plot(x_samples(2, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hplots(1) = plot(x_samples(2, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(2, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(2, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
 xlabel('$$\dot{\theta_{w}}$$');
 ylabel('$$\theta_{p}$$');
-title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
-figure;
+subplot(2, 2, 3);
 hold on;
-plot(x_samples(4, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-plot(x_samples(4, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
-plot(x_samples(4, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hplots(1) = plot(x_samples(4, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(4, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(4, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
 xlabel('$$\dot{\theta_{p}}$$');
 ylabel('$\theta_{p}$');
-title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
 
-figure;
+subplot(2, 2, 4);
 hold on;
-plot(x_samples(2, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-plot(x_samples(2, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
-plot(x_samples(2, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hplots(1) = plot(x_samples(2, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(2, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(2, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
 xlabel('$$\dot{\theta_{w}}$$');
 ylabel('$\theta_{w}$');
-title('Points satisfying Ax <= b on x1-x2 plane');
 grid on;
+hL = legend(hplots, {'$X_{15}$', '$X_{7}$', '$X_f$'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
 
+% Set the location of the legend to 'southoutside' which positions
+% it below the subplots and centers it.
+set(hL, 'Location', 'southoutside', 'Box', 'off');
 
 %% Regulation MPC
 
@@ -183,12 +183,9 @@ model = struct('A', A, 'B', B, 'N', N);
 constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
-%%
-%x0 = [9.98, -15.02, 0.08, 0.22];
-x0 = [4.8, -9.02, 0.08, 0.15]';
-x0 = [-17.5, 09.04, -0.05, -0.17]';
-%x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
-xr = [0; 0; 0; 0]; % referece x set to 0
+
+x0 = [-5, 9.04, -0.05, -0.17]';
+xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
 
 x = zeros(dim.nx, size(T, 2));
 x_nl = zeros(dim.nx, size(T, 2));
@@ -204,13 +201,13 @@ mpcmats = []; % Calculated first time and then reused
 
 
 for t = 1:1:size(T, 2)-1
-    model.x0 = x(:,t);
+    model.x0 = x_nl(:,t);
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,0,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
     usim(:,t) = uk(:,1);
     V_N(t) = FVAL;
     tspan = [T(t), T(t+1)];
-    x_nl(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t));
+    x_nl(:,t+1) = NLSystemDynamics(x_nl(:,t), tspan, usim(:,t));
     x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
     V_f(t) = 0.5*xk(:,end)'*P*xk(:,end);
     l_xu(t) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
@@ -301,19 +298,20 @@ ref = [repmat([xr;ur],N,1); xr];
 %x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
 x0 = [9.98, -15.02, 0.08, 0.22];% in Set XN
 %x0 = [-2.8, 2.02, 0.08, 0.25]';
-x0 = [-10.5, 9.04, -0.05, -0.17]';
+x0 = [2, 5.04, -0.05, -0.1]';
+x_nl(:,1) = x0;
 x(:,1) = x0; % initial condition
 usim = zeros(dim.nu, size(T, 2)-1);
 mpcmats = []; % Calculated first time and then reused
 
 for t = 1:1:size(T, 2)-1
-    model.x0 = x(:,t); % 
+    model.x0 = x_nl(:,t); % 
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
     usim(:,t) = uk(:,1);
     V_N(t) = FVAL;
     tspan = [T(t), T(t+1)];
-    x_nl(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t));
+    x_nl(:,t+1) = NLSystemDynamics(x_nl(:,t), tspan, usim(:,t));
     x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
     V_f(t) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
     l_xu(t) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
