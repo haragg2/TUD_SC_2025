@@ -27,7 +27,7 @@ theta_d_eq = 0;
 theta_p_eq = asin((m_w + m_p) * r * sin(beta) / (m_p * l));    % pendulum desired angle
 theta_pd_eq = 0;
 
-Ts = 0.1;           % s; sampling time
+Ts = 0.15;           % s; sampling time
 T_sim = 10;          % s; simulation time
 T = 0:Ts:T_sim;      % simulation time steps
 
@@ -218,44 +218,44 @@ for t = 1:1:size(T, 2)-1
 end
 
 figure;
-plot(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 2);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-plot(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
 title("Control Lypanunov Function");
 grid on;
 
 
 figure;
-plot(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
 title("Lypanunov Function Decrease");
 grid on;
 
 figure;
 title("Actual State Response");
 subplot(2, 2, 1);
-plot(x_nl(1,:), 'LineWidth', 2), grid on;
+stairs(x_nl(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(x_nl(2,:), 'LineWidth', 2), grid on;
+stairs(x_nl(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(x_nl(3,:), 'LineWidth', 2), grid on;
+stairs(x_nl(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(x_nl(4,:), 'LineWidth', 2), grid on;
+stairs(x_nl(4,:), 'LineWidth', 2), grid on;
 
 figure;
-plot(usim, 'LineWidth', 2), grid on;
+stairs(usim, 'LineWidth', 2), grid on;
 title("Control Input");
 
 %%  Simulation of regulation
 
 % Non-linear equations
-xw = @(tt) (r * cos(beta) * x_nl(1, (uint16(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x_nl(1, (uint16(tt/Ts)+1)));
+xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
 
-xp = @(tt) ((r * cos(beta) * x_nl(1, (uint16(tt/Ts)+1)) + (l * sin(x_nl(3, (uint16(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x_nl(1, (uint16(tt/Ts)+1)) + (l * cos(x_nl(3, (uint16(tt/Ts)+1))))));
+xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
 
 scaling_factor = 0.6;
 angle = -pi/3; 
@@ -268,8 +268,8 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (uint16(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (uint16(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (uint16(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (uint16(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
@@ -278,7 +278,7 @@ hold off;
 %% MPC - Reference Tracking
 
 yref = [6; 0; 0; 0];
-%terminal = Xn.lqr{5};
+
 % Calculate xref, uref
 eqconstraints.A = [eye(dim.nx) - A, -B; C, zeros(dim.ny, dim.nu)];
 eqconstraints.b = [zeros(dim.nx, 1); yref];
@@ -301,7 +301,7 @@ ref = [repmat([xr;ur],N,1); xr];
 %x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
 x0 = [9.98, -15.02, 0.08, 0.22];% in Set XN
 %x0 = [-2.8, 2.02, 0.08, 0.25]';
-x0 = [-17.5, 09.04, -0.05, -0.17]';
+x0 = [-10.5, 9.04, -0.05, -0.17]';
 x(:,1) = x0; % initial condition
 usim = zeros(dim.nu, size(T, 2)-1);
 mpcmats = []; % Calculated first time and then reused
@@ -321,44 +321,44 @@ for t = 1:1:size(T, 2)-1
 end
 
 figure;
-plot(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 2);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-plot(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
 title("Control Lypanunov Function");
 grid on;
 
 figure;
-plot(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
 title("Lypanunov Function Decrease");
 grid on;
 
 figure;
 title("Actual State Response");
 subplot(2, 2, 1);
-plot(x_nl(1,:), 'LineWidth', 2), grid on;
+stairs(x_nl(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(x_nl(2,:), 'LineWidth', 2), grid on;
+stairs(x_nl(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(x_nl(3,:), 'LineWidth', 2), grid on;
+stairs(x_nl(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(x_nl(4,:), 'LineWidth', 2), grid on;
+stairs(x_nl(4,:), 'LineWidth', 2), grid on;
 
 figure;
-plot(usim, 'LineWidth', 2), grid on;
+stairs(usim, 'LineWidth', 2), grid on;
 title("Control Input");
 grid on;
 
 %% Simulation of reference
 
 % Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/Ts)+1)));
+xw = @(tt) (r * cos(beta) * x(1, (floor(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x(1, (floor(tt/Ts)+1)));
 
-xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/Ts)+1)) + (l * sin(x(3, (uint16(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/Ts)+1)) + (l * cos(x(3, (uint16(tt/Ts)+1))))));
+xp = @(tt) ((r * cos(beta) * x(1, (floor(tt/Ts)+1)) + (l * sin(x(3, (floor(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x(1, (floor(tt/Ts)+1)) + (l * cos(x(3, (floor(tt/Ts)+1))))));
 
 figure;
 axis equal;
@@ -368,8 +368,8 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
@@ -459,64 +459,64 @@ for t = 1:1:size(T, 2)-1
 end
 
 figure;
-plot(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 2);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-plot(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
 title("Control Lypanunov Function");
 grid on;
 
 figure;
-plot(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
 title("Lypanunov Function Decrease");
 grid on;   
 
 figure;
-plot(d_est);
+stairs(d_est);
 title("Estimated Disturbance");
 grid on;
 
 figure;
 title("Estimated State Response");
 subplot(2, 2, 1);
-plot(xehat(1,:), 'LineWidth', 2), grid on;
+stairs(xehat(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(xehat(2,:), 'LineWidth', 2), grid on;
+stairs(xehat(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(xehat(3,:), 'LineWidth', 2), grid on;
+stairs(xehat(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(xehat(4,:), 'LineWidth', 2), grid on;
+stairs(xehat(4,:), 'LineWidth', 2), grid on;
 
 figure;
 title("Actual State Response");
 subplot(2, 2, 1);
-plot(x(1,:), 'LineWidth', 2), grid on;
+stairs(x(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-plot(x(2,:), 'LineWidth', 2), grid on;
+stairs(x(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-plot(x(3,:), 'LineWidth', 2), grid on;
+stairs(x(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-plot(x(4,:), 'LineWidth', 2), grid on;
+stairs(x(4,:), 'LineWidth', 2), grid on;
 
 
 figure;
-plot(ye(1,:), 'LineWidth', 2), grid on;
+stairs(ye(1,:), 'LineWidth', 2), grid on;
 title("Output");
 
 figure;
-plot(usim, 'LineWidth', 2), grid on;
+stairs(usim, 'LineWidth', 2), grid on;
 title("Control Input");
 
 %% Simulation of output feedback
 
 % Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (uint16(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (uint16(tt/Ts)+1)));
+xw = @(tt) (r * cos(beta) * x(1, (floor(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x(1, (floor(tt/Ts)+1)));
 
-xp = @(tt) ((r * cos(beta) * x(1, (uint16(tt/Ts)+1)) + (l * sin(x(3, (uint16(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (uint16(tt/Ts)+1)) + (l * cos(x(3, (uint16(tt/Ts)+1))))));
+xp = @(tt) ((r * cos(beta) * x(1, (floor(tt/Ts)+1)) + (l * sin(x(3, (floor(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x(1, (floor(tt/Ts)+1)) + (l * cos(x(3, (floor(tt/Ts)+1))))));
 
 figure;
 axis equal;
@@ -526,8 +526,8 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (uint16(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (uint16(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
