@@ -634,41 +634,47 @@ setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
 %% Display Stability Plots
 
 figure;
+
+% Subplot 1: Optimal Cost Function V_N^0
+subplot(4, 1, 1);
 hold on;
 stairs(V_N_reg, 'LineWidth', 1.5);
 stairs(V_N_ref, 'LineWidth', 1.5);
 stairs(V_N_off, 'LineWidth', 1.5);
-title("Optimal Cost funcion $V_N^0$");
+title("Optimal Cost function $V_N^0$");
 legend("Regulation", "Reference", "Offset-free");
 hold off;
 grid on;
 
-figure;
+% Subplot 2: Control Lyapunov Function V_f
+subplot(4, 1, 2);
 hold on;
 stairs(V_f_reg, 'LineWidth', 1.5);
 stairs(V_f_ref, 'LineWidth', 1.5);
 stairs(V_f_off, 'LineWidth', 1.5);
-title("Control Lypanunov Function $V_f$");
+title("Control Lyapunov Function $V_f$");
 legend("Regulation", "Reference", "Offset-free");
 hold off;
 grid on;
 
-figure;
+% Subplot 3: Control Lyapunov Inequality
+subplot(4, 1, 3);
 hold on;
 stairs(V_N_ineq_reg, 'LineWidth', 1.5);
 stairs(V_N_ineq_ref, 'LineWidth', 1.5);
 stairs(V_N_ineq_off, 'LineWidth', 1.5);
-title("Control Lypanunov Inequality");
+title("Control Lyapunov Inequality");
 legend("Regulation", "Reference", "Offset-free");
 hold off;
 grid on;
 
-figure;
+% Subplot 4: Lyapunov Function Inequality
+subplot(4, 1, 4);
 hold on;
 stairs(CLF_ineq_reg, 'LineWidth', 1.5);
 stairs(CLF_ineq_ref, 'LineWidth', 1.5);
 stairs(CLF_ineq_off, 'LineWidth', 1.5);
-title("Lypanunov Function Inequality");
+title("Lyapunov Function Inequality");
 legend("Regulation", "Reference", "Offset-free");
 hold off;
 grid on;
