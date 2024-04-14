@@ -47,10 +47,10 @@ D = sys_dis.D;
 
 % wheel: +/-30 rad, +/-0.54 m/s
 % pendulum: +/-10 deg, +/-12 deg/s 
-xlb = [-30; -10; (-10*pi/180); (-pi/15)];
+xlb = [-30; -15; (-8*pi/180); (-pi/10)];
 xub = -xlb;
-ulb = -2;
-uub = 2;
+ulb = -5;
+uub = 5;
 
 N = 15; % Horizon
 
@@ -258,6 +258,7 @@ penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
 x0 = [-5, 9.04, -0.05, -0.17]';
+x0 = [16.9, 3.89, -0.11, -0.09]';
 xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
 
 x = zeros(dim.nx, size(T, 2));
@@ -358,6 +359,7 @@ yref = [6; 0; 0; 0];
 ref = [repmat([xr;ur],N,1); xr];
 
 x0 = [2, 5.04, -0.05, -0.1]';
+x0 = [16.9, 3.89, -0.11, -0.09]';
 x_nl(:,1) = x0;
 x(:,1) = x0; % initial condition
 usim = zeros(dim.nu, size(T, 2)-1);
@@ -475,6 +477,7 @@ ur = [];
 
 x0 = [1, 0.8, 0.02, -0.06]';
 %x0 = [-10.5, 5.04, 0.01, -0.17]';
+
 x(:,1) = x0;
 x_nl(:,1) = x0;
 
@@ -482,7 +485,7 @@ ye = zeros(length(yref),size(T, 2)-1);
 ye(:,1)=aug_sys.C*[x0; disturbance(1)];
 
 xehat = zeros(dim.nx+1, size(T, 2));
-xehat(:,1)=[1; 0; 0; 0; d_hat];
+xehat(:,1)=[0; 0; 0; 0; d_hat];
 
 usim = zeros(dim.nu, size(T, 2)-1);
 d_est = zeros(1,size(T, 2)-1);
