@@ -27,7 +27,7 @@ theta_d_eq = 0;
 theta_p_eq = asin((m_w + m_p) * r * sin(beta) / (m_p * l));    % pendulum desired angle
 theta_pd_eq = 0;
 
-Ts = 0.15;           % s; sampling time
+Ts = 0.10;           % s; sampling time
 T_sim = 10;          % s; simulation time
 T = 0:Ts:T_sim;      % simulation time steps
 
