@@ -1,6 +1,7 @@
 clear all
 close all
 clc
+addpath('functions/');
 
 % Set Latex interpreter for plots
 set(groot,'defaulttextinterpreter','latex');  
