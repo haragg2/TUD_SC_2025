@@ -37,6 +37,7 @@ sys_cont = sys_dyn(m_w, m_p, l, r, g, beta, J);
 % Discretize the system
 sys_dis = c2d(sys_cont, Ts, 'zoh');
 
+% System matrices
 A = sys_dis.A;
 B = sys_dis.B;
 C = sys_dis.C;
@@ -44,6 +45,8 @@ D = sys_dis.D;
 
 %% Bounds
 
+% wheel: +/-30 rad, +/-0.54 m/s
+% pendulum: +/-10 deg, +/-12 deg/s 
 xlb = [-30; -10; (-10*pi/180); (-pi/15)];
 xub = -xlb;
 ulb = -2;
@@ -62,8 +65,7 @@ dim.ny = size(sys_dis.C, 1);        % Number of outputs
 Q = diag([10, 0.01, 1000, 1000]);     % state cost
 R = 16 * eye(length(B(1,:)));    % input cost
 
-% Find LQR
-
+% Find LQR gain matrix
 [K, P] = dlqr(A, B, Q, R);
 K = -K; % Sign convention
 
@@ -89,9 +91,10 @@ end
 
 A_K = A + B * K;
 
-x0 = [29.4; -18.1; 0.13; -0.28];
-sysd_lqr = ss(A_K, [], C, D, Ts);
-u = zeros(size(T));
+x0 = [29.4; -18.1; 0.13; -0.28];        % initial condition
+u = zeros(size(T));                     % 0 input
+sysd_lqr = ss(A_K, [], C, D, Ts);       
+
 figure;
 grid on;
 lsim(sysd_lqr, u, T, x0);
@@ -100,7 +103,7 @@ lsim(sysd_lqr, u, T, x0);
 u_LQ = K * x_LQ';
 
 figure;
-plot(t_LQ, u_LQ);
+stairs(t_LQ, u_LQ);
 title('Control Input for LQ Control');
 xlabel('Time (seconds)');
 ylabel('Control Input');
@@ -119,7 +122,7 @@ Xf = Xn.lqr{1};
 X1 = Xn.lqr{floor(N/2)};
 X2 = Xn.lqr{N+1};
 
-% Generate 100000 random points within the specified bounds
+% Generate 500000 random points within the specified bounds
 num_points = 500000;
 x_samples = bsxfun(@plus, xlb, bsxfun(@times, rand(numel(xlb), num_points), (xub - xlb)));
 
@@ -130,7 +133,7 @@ satisfied_points_X2 = all(X2.A * x_samples <= X2.b, 1);
 
 % Plot the points that satisfy the condition on the 2D plane
 figure;
-sgtitle('Points satisfying $X.A*x <= X.b$ on 2D plane');
+sgtitle('Projection of points satisfying $X.A*x <= X.b$ on 2D plane');
 hplots = gobjects(3, 1);
 subplot(2, 2, 1);
 hold on;
@@ -175,6 +178,76 @@ hL = legend(hplots, {'$X_{15}$', '$X_{7}$', '$X_f$'}, 'Interpreter', 'latex', 'O
 
 % Set the location of the legend to 'southoutside' which positions
 % it below the subplots and centers it.
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
+%% Proof: Control input invariance of Xf
+
+x_in_Xf = x_samples(:, satisfied_points_Xf);
+xp_in_Xf_idx = all(Xf.A * (A_K*x_in_Xf) <= Xf.b, 1);
+xp_out_Xf_idx = ~xp_in_Xf_idx;
+
+xp_in_Xf = x_in_Xf(:, xp_in_Xf_idx);
+xp_out_Xf = x_in_Xf(:, xp_out_Xf_idx);
+
+% Plot the points that satisfy the condition on the 2D plane
+figure;
+sgtitle('Projection of points $x \in X_f$ and $x^+ = A_K*x$ on 2D plane');
+hplots = gobjects(2, 1);
+subplot(2, 2, 1);
+
+% Dummy input for hplot(3) to make it empty and legends to work
+hplots(3) = plot(x_in_Xf(1, :), x_in_Xf(1, :), 'r+', 'MarkerSize', 3);
+hplots(3).XData = [];
+hplots(3).YData = [];
+
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(1, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(1, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(1, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$\theta_{w}$');
+ylabel('$\theta_{p}$');
+grid on;
+
+subplot(2, 2, 2);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(2, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(2, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(2, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+
+hold off;
+xlabel('$$\dot{\theta_{w}}$$');
+ylabel('$$\theta_{p}$$');
+grid on;
+
+subplot(2, 2, 3);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(4, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(4, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(4, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{p}}$$');
+ylabel('$\theta_{p}$');
+grid on;
+
+subplot(2, 2, 4);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(2, :), xp_out_Xf(1, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(2, :), x_in_Xf(1, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(2, :), xp_in_Xf(1, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{w}}$$');
+ylabel('$\theta_{w}$');
+grid on;
+hL = legend(hplots, {'$x$', '$x^+ \in X_f$', '$x^+ \notin X_f$'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
 set(hL, 'Location', 'southoutside', 'Box', 'off');
 
 %% Regulation MPC
