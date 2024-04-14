@@ -252,7 +252,7 @@ set(hL, 'Location', 'southoutside', 'Box', 'off');
 
 %% Regulation MPC
 
-model = struct('A', A, 'B', B, 'N', N);
+model = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
 constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
@@ -315,19 +315,19 @@ grid on;
 
 figure;
 stairs(V_f, 'LineWidth', 2);
-title("Control Lypanunov Function");
+title("Control Lypanunov Function $V_f$");
 grid on;
 
 % Plot CLF inequality
 figure;
 stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2);
-title("Control Lypanunov Function Decrease");
+title("Control Lypanunov Function Inequality");
 grid on;
 
 % Plot V_N inequality
 figure;
 stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
-title("Lypanunov Function Decrease");
+title("Lypanunov Function Inequality");
 grid on;
 
 figure;
@@ -358,7 +358,7 @@ xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor
 yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
 
 scaling_factor = 0.6;
-angle = -pi/3; 
+angle = -pi/3;
 
 figure;
 axis equal;
@@ -371,7 +371,7 @@ fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g')
 fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
-% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
 
 
@@ -380,46 +380,51 @@ hold off;
 yref = [6; 0; 0; 0];
 
 % Calculate xref, uref
-eqconstraints.A = [eye(dim.nx) - A, -B; C, zeros(dim.ny, dim.nu)];
-eqconstraints.b = [zeros(dim.nx, 1); yref];
-
-ineqconstraints.A = [Z.('lqr').('G'), Z.('lqr').('H')];
-ineqconstraints.b = Z.('lqr').('psi');
-
-H = blkdiag(zeros(dim.nx), eye(dim.nu));
-h = zeros(dim.nx+dim.nu, 1);
-
-options1 = optimoptions(@quadprog); 
-options1.OptimalityTolerance=1e-20;
-options1.ConstraintTolerance=1.0000e-15;
-options1.Display='iter';
-xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
-xr = xur(1:dim.nx);
-ur = xur(dim.nx+1:end);
+[xr, ur] = targetSelector(model, constraint, dim, 0, yref);
 ref = [repmat([xr;ur],N,1); xr];
 
-%x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
-x0 = [9.98, -15.02, 0.08, 0.22];% in Set XN
-%x0 = [-2.8, 2.02, 0.08, 0.25]';
 x0 = [2, 5.04, -0.05, -0.1]';
 x_nl(:,1) = x0;
 x(:,1) = x0; % initial condition
 usim = zeros(dim.nu, size(T, 2)-1);
 mpcmats = []; % Calculated first time and then reused
 
-for t = 1:1:size(T, 2)-1
-    model.x0 = x_nl(:,t); % 
-    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model, constraint, penalty, ...
+disp("MPC Constant Reference Tracking Started.");
+for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * Ts;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
+
+    % Get the initial state from the non-linear dynamics last step state
+    model.x0 = x_nl(:,k);
+
+    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr, ref, 0, model, constraint, penalty, ...
                                              terminal, mpcmats);
-    usim(:,t) = uk(:,1);
-    V_N(t) = FVAL;
-    tspan = [T(t), T(t+1)];
-    x_nl(:,t+1) = NLSystemDynamics(x_nl(:,t), tspan, usim(:,t));
-    x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
-    V_f(t) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
-    l_xu(t) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
-    l_xu0(t) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
+
+    % Get the first optimal control input from the MPC controller
+    usim(:,k) = uk(:,1);
+
+    % Optimal cost function value
+    V_N(k) = FVAL;
+
+    % Simlulate the non-linear dynamics with the current control input for
+    % Ts time (ZOH operation)
+    tspan = [T(k), T(k+1)];
+    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k));
+
+    x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+
+    % Control Lyapunov function
+    V_f(k) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
+
+    % Stage costs computed at different time steps
+    l_xu(k) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
+    l_xu0(k) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
+disp("MPC Constant Reference Tracking Finished.");
+
+%% Display MPC Constant Reference Tracking plots
 
 figure;
 stairs(V_N, 'LineWidth', 2);
@@ -427,13 +432,18 @@ title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
+stairs(V_f, 'LineWidth', 2);
+title("Control Lypanunov Function $V_f$");
+grid on;
+
+figure;
 stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
-title("Control Lypanunov Function");
+title("Control Lypanunov Function Inequality");
 grid on;
 
 figure;
 stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
-title("Lypanunov Function Decrease");
+title("Lypanunov Function Inequality");
 grid on;
 
 figure;
@@ -454,12 +464,18 @@ grid on;
 
 %% Simulation of reference
 
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (floor(tt/Ts)+1)));
+% Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
+x_nl(3,:) = x_nl(3,:) + theta_p_eq;
 
-xp = @(tt) ((r * cos(beta) * x(1, (floor(tt/Ts)+1)) + (l * sin(x(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (floor(tt/Ts)+1)) + (l * cos(x(3, (floor(tt/Ts)+1))))));
+% Non-linear equations
+xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
+
+xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
+
+scaling_factor = 0.6;
+angle = -pi/3; 
 
 figure;
 axis equal;
@@ -469,10 +485,10 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
-% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
 
 %% Output feedback
@@ -526,10 +542,10 @@ options1.OptimalityTolerance=1e-20;
 options1.ConstraintTolerance=1.0000e-15;
 options1.Display='off';
 
-for t = 1:1:size(T, 2)-1
+for k = 1:1:size(T, 2)-1
 
-    d_hat = xehat(end,t);
-    d_est(t) = d_hat;
+    d_hat = xehat(end,k);
+    d_est(k) = d_hat;
     dist = repmat((Bd*d_hat),N,1);
 
     eqconstraints.A = [eye(dim.nx) - A, -B; C_out, zeros(size(C_out, 1), dim.nu)];
@@ -540,23 +556,23 @@ for t = 1:1:size(T, 2)-1
     ur = xur(dim.nx+1:end);
     ref = [repmat([xr;ur],N,1); xr];
     
-    model.x0 = xehat(1:end-1,t);
+    model.x0 = xehat(1:end-1,k);
 
     [xk, uk, FVAL, status] = linearmpc(xr,ref, dist, model, constraint, penalty, ...
                                              terminal, []);
-    usim(:,t) = uk(:,1);
+    usim(:,k) = uk(:,1);
 
-    tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t)+disturbance); % given that Bd = B
-    ye(:,t) = aug_sys.C * [x(:,t); disturbance];
-    xehat(:,t+1) = aug_sys.A*xehat(:,t) + aug_sys.B*usim(:,t) + L_obs*(ye(:,t) - (aug_sys.C*xehat(:,t)));
-    V_N(t) = FVAL;
+    tspan = [T(k), T(k+1)];
+    x(:,k+1) = NLSystemDynamics(x(:,k), tspan, usim(:,k)+disturbance); % given that Bd = B
+    ye(:,k) = aug_sys.C * [x(:,k); disturbance];
+    xehat(:,k+1) = aug_sys.A*xehat(:,k) + aug_sys.B*usim(:,k) + L_obs*(ye(:,k) - (aug_sys.C*xehat(:,k)));
+    V_N(k) = FVAL;
 
 
-    %x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
-    V_f(t) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
-    l_xu(t) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
-    l_xu0(t) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
+    %x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+    V_f(k) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
+    l_xu(k) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
+    l_xu0(k) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
 
 figure;
@@ -708,4 +724,24 @@ function [X] = NLSystemDynamics(x0, tspan, u)
     [~, x_step] = ode45(@(t, Y)M(t, Y, Tau), tspan, x0);
     X = x_step(end, :)';
     X(3) = X(3) - theta_p_eq; % Subtract the eqbm pendulum angle to feed it back to the linear system
+end
+
+function [xr, ur] = targetSelector(LTI, Z, dim, d_hat, yref)
+
+    eqconstraints.A = [eye(dim.nx) - LTI.A, -LTI.B; LTI.C, zeros(size(LTI.C, 1), dim.nu)];
+    eqconstraints.b = [LTI.Bd * d_hat; yref - (LTI.Cd*d_hat)];
+
+    ineqconstraints.A = [Z.('G'), Z.('H')];
+    ineqconstraints.b = Z.('psi');
+
+    H = blkdiag(zeros(dim.nx), eye(dim.nu));
+    h = zeros(dim.nx+dim.nu, 1);
+
+    options1 = optimoptions(@quadprog);
+    options1.OptimalityTolerance=1e-20;
+    options1.ConstraintTolerance=1.0000e-15;
+    options1.Display='off';
+    xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
+    xr = xur(1:dim.nx);
+    ur = xur(dim.nx+1:end);
 end
