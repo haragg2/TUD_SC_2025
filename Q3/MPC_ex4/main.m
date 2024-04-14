@@ -270,34 +270,61 @@ V_N = zeros(size(T, 2)-1,1);
 V_f = zeros(size(T, 2)-1,1);
 l_xu = zeros(size(T, 2)-1,1);
 l_xu0 = zeros(size(T, 2)-1,1);
+t = zeros(size(T, 2)-1,1);
 mpcmats = []; % Calculated first time and then reused
 
+disp("MPC Regulation Started");
+for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * Ts;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
 
-for t = 1:1:size(T, 2)-1
-    model.x0 = x_nl(:,t);
+    % Get the initial state from the non-linear dynamics last step state
+    model.x0 = x_nl(:,k);
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,0,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
-    usim(:,t) = uk(:,1);
-    V_N(t) = FVAL;
-    tspan = [T(t), T(t+1)];
-    x_nl(:,t+1) = NLSystemDynamics(x_nl(:,t), tspan, usim(:,t));
-    x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
-    V_f(t) = 0.5*xk(:,end)'*P*xk(:,end);
-    l_xu(t) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
-    l_xu0(t) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
-end
 
+    % Get the first optimal control input from the MPC controller
+    usim(:,k) = uk(:,1);
+
+    % Optimal cost function value
+    V_N(k) = FVAL;
+
+    % Simlulate the non-linear dynamics with the current control input for
+    % Ts time (ZOH operation)
+    tspan = [T(k), T(k+1)];
+    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k));
+
+    x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+
+    % Control Lyapunov function
+    V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
+
+    % Stage costs computed at different time steps
+    l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
+    l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
+end
+disp("MPC Regulation Finished.");
+
+%% Display MPC Regulation plots
 figure;
 stairs(V_N, 'LineWidth', 2);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+stairs(V_f, 'LineWidth', 2);
 title("Control Lypanunov Function");
 grid on;
 
+% Plot CLF inequality
+figure;
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2);
+title("Control Lypanunov Function Decrease");
+grid on;
 
+% Plot V_N inequality
 figure;
 stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
 title("Lypanunov Function Decrease");
@@ -319,6 +346,9 @@ stairs(usim, 'LineWidth', 2), grid on;
 title("Control Input");
 
 %%  Simulation of regulation
+
+% Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
+x_nl(3,:) = x_nl(3,:) + theta_p_eq;
 
 % Non-linear equations
 xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
