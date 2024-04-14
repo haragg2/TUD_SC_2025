@@ -10,7 +10,7 @@ set(groot, 'defaultLegendInterpreter','latex');
 %% Model definition
 
 % Model Parameters
-
+% Change the parameters in NLDynamics function as well
 m_w = 1.5;          % kg; mass of wheel
 m_p = 6.16;         % kg; mass of pendulum
 l = 0.46;           % m; distance between COG of pendulum and center of wheel
@@ -347,33 +347,7 @@ title("Control Input");
 
 %%  Simulation of regulation
 
-% Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
-x_nl(3,:) = x_nl(3,:) + theta_p_eq;
-
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
-
-xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
-
-scaling_factor = 0.6;
-angle = -pi/3;
-
-figure;
-axis equal;
-hold on;
-fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-% Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
-hold off;
-
+setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% MPC - Reference Tracking
 
@@ -462,34 +436,9 @@ stairs(usim, 'LineWidth', 2), grid on;
 title("Control Input");
 grid on;
 
-%% Simulation of reference
+%% Simulation of reference tracking
 
-% Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
-x_nl(3,:) = x_nl(3,:) + theta_p_eq;
-
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
-
-xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
-
-scaling_factor = 0.6;
-angle = -pi/3; 
-
-figure;
-axis equal;
-hold on;
-fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-% Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
-hold off;
+setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% Output Feedback with Disturbance Rejection
 
@@ -649,32 +598,7 @@ title("Control Input");
 
 %% Simulation of output feedback
 
-% Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
-x_nl(3,:) = x_nl(3,:) + theta_p_eq;
-
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
-
-xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
-
-scaling_factor = 0.6;
-angle = -pi/3;
-
-figure;
-axis equal;
-hold on;
-fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-% Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
-hold off;
+setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% Functions
 
@@ -771,4 +695,37 @@ function [xr, ur] = targetSelector(LTI, Z, dim, d_hat, yref)
     xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
     xr = xur(1:dim.nx);
     ur = xur(dim.nx+1:end);
+end
+
+function setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim)
+    
+    % Calculate FPS
+    Fps = floor(1/Ts);
+
+    % Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
+    x_nl(3,:) = x_nl(3,:) + theta_p_eq;
+    
+    % Non-linear equations
+    xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
+    yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
+    
+    xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
+    yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
+    
+    scaling_factor = 0.6;
+    angle = -pi/3;
+    
+    figure;
+    axis equal;
+    hold on;
+    fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    
+    % Plot the L-shaped line
+    fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    
+    fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    hold off;
 end
