@@ -491,16 +491,20 @@ fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angl
 fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
 
-%% Output feedback
+%% Output Feedback with Disturbance Rejection
 
 Bd = B;
 C_out = [1 0 0 0; 0 0 1 0; 0 0 0 1];
 Cd = [0.5; 0; 0];
+model.C = C_out;
+model.Bd = Bd;
+model.Cd = Cd;
 
 if ((rank([eye(dim.nx) - A -Bd; C_out Cd]) - dim.nx - 1) ~= 0) || (rank(obsv(A,C_out)) ~= dim.nx)
     warning ('Augmented state is not observable');
 end
 
+% Augmented system
 aug_sys.A = [A Bd; zeros(1,dim.nx) eye(1,size(Bd,2))];
 aug_sys.B = [B;zeros(1,size(B,2))];
 aug_sys.C = [C_out Cd];
@@ -515,7 +519,7 @@ end
 disturbance = 0.5;
 d_hat = 0;
 
-yref = [6; 0; 0]; %10
+yref = [6; 0; 0];
 
 xr = zeros(dim.nx,1);
 ur = [];
@@ -523,6 +527,7 @@ ur = [];
 x0 = [1, 0.8, 0.02, -0.06]';
 %x0 = [-10.5, 5.04, 0.01, -0.17]';
 x(:,1) = x0;
+x_nl(:,1) = x0;
 
 ye = zeros(length(yref),size(T, 2)-1);
 ye(:,1)=aug_sys.C*[x0; disturbance(1)];
@@ -534,46 +539,57 @@ usim = zeros(dim.nu, size(T, 2)-1);
 d_est = zeros(1,size(T, 2)-1);
 mpcmats = [];
 
-H = blkdiag(zeros(dim.nx), eye(dim.nu));
-h = zeros(dim.nx+dim.nu, 1);
-    
-options1 = optimoptions(@quadprog); 
-options1.OptimalityTolerance=1e-20;
-options1.ConstraintTolerance=1.0000e-15;
-options1.Display='off';
-
+disp("Offset Free Output Feedback MPC Started.");
 for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * Ts;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
 
+    % Get the estimated disturbance from the observer
     d_hat = xehat(end,k);
     d_est(k) = d_hat;
     dist = repmat((Bd*d_hat),N,1);
 
-    eqconstraints.A = [eye(dim.nx) - A, -B; C_out, zeros(size(C_out, 1), dim.nu)];
-    eqconstraints.b = [Bd*d_hat; yref-(Cd*d_hat)];
-    
-    xur=quadprog(H,h,[],[],eqconstraints.A,eqconstraints.b,[],[],[],options1);
-    xr = xur(1:dim.nx);
-    ur = xur(dim.nx+1:end);
+    % Online calculation of xref, uref
+    [xr, ur] = targetSelector(model, constraint, dim, d_hat, yref);
     ref = [repmat([xr;ur],N,1); xr];
-    
+
+    % Get the initial estimated state from the observer
     model.x0 = xehat(1:end-1,k);
 
     [xk, uk, FVAL, status] = linearmpc(xr,ref, dist, model, constraint, penalty, ...
                                              terminal, []);
+
+    % Get the first optimal control input from the MPC controller
     usim(:,k) = uk(:,1);
 
+    % Simlulate the non-linear dynamics with the current control input for
+    % Ts time (ZOH operation)
     tspan = [T(k), T(k+1)];
-    x(:,k+1) = NLSystemDynamics(x(:,k), tspan, usim(:,k)+disturbance); % given that Bd = B
-    ye(:,k) = aug_sys.C * [x(:,k); disturbance];
+    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k)+disturbance); % given that Bd = B
+
+    % Measure the noisy output from the non-linear system
+    ye(:,k) = aug_sys.C * [x_nl(:,k); disturbance];
+
+    % Using observer estimate the states
     xehat(:,k+1) = aug_sys.A*xehat(:,k) + aug_sys.B*usim(:,k) + L_obs*(ye(:,k) - (aug_sys.C*xehat(:,k)));
+
+    % Optimal cost function value
     V_N(k) = FVAL;
 
-
     %x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+
+    % Control Lyapunov function
     V_f(k) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
+
+    % Stage costs computed at different time steps
     l_xu(k) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
     l_xu0(k) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
+disp("Offset Free Output Feedback MPC Finished.");
+
+%% Display Offset Free Output Feedback MPC plots
 
 figure;
 stairs(V_N, 'LineWidth', 2);
@@ -581,13 +597,18 @@ title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
+stairs(V_f, 'LineWidth', 2);
+title("Control Lypanunov Function $V_f$");
+grid on;
+
+figure;
 stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
-title("Control Lypanunov Function");
+title("Control Lypanunov Inequality");
 grid on;
 
 figure;
 stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
-title("Lypanunov Function Decrease");
+title("Lypanunov Function Inequality");
 grid on;   
 
 figure;
@@ -609,13 +630,13 @@ stairs(xehat(4,:), 'LineWidth', 2), grid on;
 figure;
 title("Actual State Response");
 subplot(2, 2, 1);
-stairs(x(1,:), 'LineWidth', 2), grid on;
+stairs(x_nl(1,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 2);
-stairs(x(2,:), 'LineWidth', 2), grid on;
+stairs(x_nl(2,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 3);
-stairs(x(3,:), 'LineWidth', 2), grid on;
+stairs(x_nl(3,:), 'LineWidth', 2), grid on;
 subplot(2, 2, 4);
-stairs(x(4,:), 'LineWidth', 2), grid on;
+stairs(x_nl(4,:), 'LineWidth', 2), grid on;
 
 
 figure;
@@ -628,12 +649,18 @@ title("Control Input");
 
 %% Simulation of output feedback
 
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (floor(tt/Ts)+1)));
+% Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
+x_nl(3,:) = x_nl(3,:) + theta_p_eq;
 
-xp = @(tt) ((r * cos(beta) * x(1, (floor(tt/Ts)+1)) + (l * sin(x(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (floor(tt/Ts)+1)) + (l * cos(x(3, (floor(tt/Ts)+1))))));
+% Non-linear equations
+xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
+yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
+
+xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
+yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
+
+scaling_factor = 0.6;
+angle = -pi/3;
 
 figure;
 axis equal;
@@ -643,10 +670,10 @@ fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0
 fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
 % Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
 
-% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
+fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
 hold off;
 
 %% Functions
