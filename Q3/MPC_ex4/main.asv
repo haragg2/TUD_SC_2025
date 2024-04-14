@@ -10,7 +10,7 @@ set(groot, 'defaultLegendInterpreter','latex');
 %% Model definition
 
 % Model Parameters
-
+% Change the parameters in NLDynamics function as well
 m_w = 1.5;          % kg; mass of wheel
 m_p = 6.16;         % kg; mass of pendulum
 l = 0.46;           % m; distance between COG of pendulum and center of wheel
@@ -27,7 +27,7 @@ theta_d_eq = 0;
 theta_p_eq = asin((m_w + m_p) * r * sin(beta) / (m_p * l));    % pendulum desired angle
 theta_pd_eq = 0;
 
-Ts = 0.15;           % s; sampling time
+Ts = 0.10;           % s; sampling time
 T_sim = 10;          % s; simulation time
 T = 0:Ts:T_sim;      % simulation time steps
 
@@ -37,6 +37,7 @@ sys_cont = sys_dyn(m_w, m_p, l, r, g, beta, J);
 % Discretize the system
 sys_dis = c2d(sys_cont, Ts, 'zoh');
 
+% System matrices
 A = sys_dis.A;
 B = sys_dis.B;
 C = sys_dis.C;
@@ -44,10 +45,12 @@ D = sys_dis.D;
 
 %% Bounds
 
-xlb = [-30; -10; (-10*pi/180); (-pi/15)];
+% wheel: +/-30 rad, +/-0.54 m/s
+% pendulum: +/-10 deg, +/-12 deg/s 
+xlb = [-30; -15; (-8*pi/180); (-pi/10)];
 xub = -xlb;
-ulb = -2;
-uub = 2;
+ulb = -5;
+uub = 5;
 
 N = 15; % Horizon
 
@@ -62,8 +65,7 @@ dim.ny = size(sys_dis.C, 1);        % Number of outputs
 Q = diag([10, 0.01, 1000, 1000]);     % state cost
 R = 16 * eye(length(B(1,:)));    % input cost
 
-% Find LQR
-
+% Find LQR gain matrix
 [K, P] = dlqr(A, B, Q, R);
 K = -K; % Sign convention
 
@@ -89,9 +91,11 @@ end
 
 A_K = A + B * K;
 
-x0 = [29.4; -18.1; 0.13; -0.28];
-sysd_lqr = ss(A_K, [], C, D, Ts);
-u = zeros(size(T));
+x0 = [-5, 9.04, -0.05, -0.17]';         % initial condition for Xf
+%x0 = [16.9, 3.89, -0.11, -0.09]';       % initial condition for Xn
+u = zeros(size(T));                     % 0 input
+sysd_lqr = ss(A_K, [], C, D, Ts);       
+
 figure;
 grid on;
 lsim(sysd_lqr, u, T, x0);
@@ -100,7 +104,7 @@ lsim(sysd_lqr, u, T, x0);
 u_LQ = K * x_LQ';
 
 figure;
-plot(t_LQ, u_LQ);
+stairs(t_LQ, u_LQ);
 title('Control Input for LQ Control');
 xlabel('Time (seconds)');
 ylabel('Control Input');
@@ -119,7 +123,7 @@ Xf = Xn.lqr{1};
 X1 = Xn.lqr{floor(N/2)};
 X2 = Xn.lqr{N+1};
 
-% Generate 100000 random points within the specified bounds
+% Generate 500000 random points within the specified bounds
 num_points = 500000;
 x_samples = bsxfun(@plus, xlb, bsxfun(@times, rand(numel(xlb), num_points), (xub - xlb)));
 
@@ -130,7 +134,7 @@ satisfied_points_X2 = all(X2.A * x_samples <= X2.b, 1);
 
 % Plot the points that satisfy the condition on the 2D plane
 figure;
-sgtitle('Points satisfying $X.A*x <= X.b$ on 2D plane');
+sgtitle('Projection of points satisfying $X.A*x <= X.b$ on 2D plane');
 hplots = gobjects(3, 1);
 subplot(2, 2, 1);
 hold on;
@@ -154,12 +158,12 @@ grid on;
 
 subplot(2, 2, 3);
 hold on;
-hplots(1) = plot(x_samples(4, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-hplots(2) = plot(x_samples(4, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
-hplots(3) = plot(x_samples(4, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hplots(1) = plot(x_samples(4, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(4, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(4, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
 xlabel('$$\dot{\theta_{p}}$$');
-ylabel('$\theta_{p}$');
+ylabel('$\theta_{w}$');
 grid on;
 
 subplot(2, 2, 4);
@@ -177,14 +181,85 @@ hL = legend(hplots, {'$X_{15}$', '$X_{7}$', '$X_f$'}, 'Interpreter', 'latex', 'O
 % it below the subplots and centers it.
 set(hL, 'Location', 'southoutside', 'Box', 'off');
 
+%% Proof: Control input invariance of Xf
+
+x_in_Xf = x_samples(:, satisfied_points_Xf);
+xp_in_Xf_idx = all(Xf.A * (A_K*x_in_Xf) <= Xf.b, 1);
+xp_out_Xf_idx = ~xp_in_Xf_idx;
+
+xp_in_Xf = x_in_Xf(:, xp_in_Xf_idx);
+xp_out_Xf = x_in_Xf(:, xp_out_Xf_idx);
+
+% Plot the points that satisfy the condition on the 2D plane
+figure;
+sgtitle('Projection of points $x \in X_f$ and $x^+ = A_K*x$ on 2D plane');
+hplots = gobjects(2, 1);
+subplot(2, 2, 1);
+
+% Dummy input for hplot(3) to make it empty and legends to work
+hplots(3) = plot(x_in_Xf(1, :), x_in_Xf(1, :), 'r+', 'MarkerSize', 3);
+hplots(3).XData = [];
+hplots(3).YData = [];
+
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(1, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(1, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(1, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$\theta_{w}$');
+ylabel('$\theta_{p}$');
+grid on;
+
+subplot(2, 2, 2);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(2, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(2, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(2, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+
+hold off;
+xlabel('$$\dot{\theta_{w}}$$');
+ylabel('$$\theta_{p}$$');
+grid on;
+
+subplot(2, 2, 3);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(4, :), xp_out_Xf(1, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(4, :), x_in_Xf(1, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(4, :), xp_in_Xf(1, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{p}}$$');
+ylabel('$\theta_{w}$');
+grid on;
+
+subplot(2, 2, 4);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(2, :), xp_out_Xf(1, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(2, :), x_in_Xf(1, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(2, :), xp_in_Xf(1, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{w}}$$');
+ylabel('$\theta_{w}$');
+grid on;
+hL = legend(hplots, {'$x$', '$x^+ \in X_f$', '$x^+ \notin X_f$'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
 %% Regulation MPC
 
-model = struct('A', A, 'B', B, 'N', N);
+model = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
 constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
-x0 = [-5, 9.04, -0.05, -0.17]';
+x0 = [-5, 9.04, -0.05, -0.17]';     % initial condition for Xf
+%x0 = [16.9, 3.89, -0.11, -0.09]';  % initial condition for XN
 xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
 
 x = zeros(dim.nx, size(T, 2));
@@ -197,190 +272,222 @@ V_N = zeros(size(T, 2)-1,1);
 V_f = zeros(size(T, 2)-1,1);
 l_xu = zeros(size(T, 2)-1,1);
 l_xu0 = zeros(size(T, 2)-1,1);
+t = zeros(size(T, 2)-1,1);
 mpcmats = []; % Calculated first time and then reused
 
+disp("MPC Regulation Started");
+for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * Ts;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
 
-for t = 1:1:size(T, 2)-1
-    model.x0 = x(:,t);
+    % Get the initial state from the non-linear dynamics last step state
+    model.x0 = x_nl(:,k);
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,0,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
-    usim(:,t) = uk(:,1);
-    V_N(t) = FVAL;
-    tspan = [T(t), T(t+1)];
-    x_nl(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t));
-    x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
-    V_f(t) = 0.5*xk(:,end)'*P*xk(:,end);
-    l_xu(t) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
-    l_xu0(t) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
-end
 
+    % Get the first optimal control input from the MPC controller
+    usim(:,k) = uk(:,1);
+
+    % Optimal cost function value
+    V_N(k) = FVAL;
+
+    % Simlulate the non-linear dynamics with the current control input for
+    % Ts time (ZOH operation)
+    tspan = [T(k), T(k+1)];
+    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k));
+
+    x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+
+    % Control Lyapunov function
+    V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
+
+    % Stage costs computed at different time steps
+    l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
+    l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
+end
+disp("MPC Regulation Finished.");
+
+%% Display MPC Regulation plots
 figure;
-stairs(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
-title("Control Lypanunov Function");
+stairs(V_f, 'LineWidth', 1.5);
+title("Control Lypanunov Function $V_f$");
 grid on;
 
-
+% Plot CLF inequality
 figure;
-stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
-title("Lypanunov Function Decrease");
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5);
+title("Control Lypanunov Function Inequality");
+grid on;
+
+% Plot V_N inequality
+figure;
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
+title("Lypanunov Function Inequality");
 grid on;
 
 figure;
-title("Actual State Response");
-subplot(2, 2, 1);
-stairs(x_nl(1,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 2);
-stairs(x_nl(2,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 3);
-stairs(x_nl(3,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 4);
-stairs(x_nl(4,:), 'LineWidth', 2), grid on;
+sgtitle("Regulation MPC vs Unconstrained LQR Response");
+subplot(5, 1, 1);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(1,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,1), 'LineWidth', 1.5);
+ylabel('$\theta_{w}$');
+hold off;
+subplot(5, 1, 2);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(2,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{w}}$$');
+hold off;
+subplot(5, 1, 3);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(3,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,3), 'LineWidth', 1.5);
+ylabel('$\theta_{p}$');
+hold off;
+subplot(5, 1, 4);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(4,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{p}}$$');
+hold off;
+subplot(5, 1, 5);
+hold on;
+grid on;
+hplots(1) = stairs(usim, 'LineWidth', 1.5);
+hplots(1) = stairs(u_LQ(1:end-1), 'LineWidth', 1.5);
+hold off;
+xlabel('Time Step $k$');
+ylabel('$u$');
 
-figure;
-stairs(usim, 'LineWidth', 2), grid on;
-title("Control Input");
+hL = legend({'MPC', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
 
 %%  Simulation of regulation
 
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
-
-xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
-
-scaling_factor = 0.6;
-angle = -pi/3; 
-
-figure;
-axis equal;
-hold on;
-fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-% Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
-hold off;
-
+setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% MPC - Reference Tracking
 
 yref = [6; 0; 0; 0];
 
 % Calculate xref, uref
-eqconstraints.A = [eye(dim.nx) - A, -B; C, zeros(dim.ny, dim.nu)];
-eqconstraints.b = [zeros(dim.nx, 1); yref];
-
-ineqconstraints.A = [Z.('lqr').('G'), Z.('lqr').('H')];
-ineqconstraints.b = Z.('lqr').('psi');
-
-H = blkdiag(zeros(dim.nx), eye(dim.nu));
-h = zeros(dim.nx+dim.nu, 1);
-
-options1 = optimoptions(@quadprog); 
-options1.OptimalityTolerance=1e-20;
-options1.ConstraintTolerance=1.0000e-15;
-options1.Display='iter';
-xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
-xr = xur(1:dim.nx);
-ur = xur(dim.nx+1:end);
+[xr, ur] = targetSelector(model, constraint, dim, 0, yref);
 ref = [repmat([xr;ur],N,1); xr];
 
-%x0 = [16.9, 3.89, -0.11, -0.09]'; % in Set XN
-x0 = [9.98, -15.02, 0.08, 0.22];% in Set XN
-%x0 = [-2.8, 2.02, 0.08, 0.25]';
-x0 = [-5, 9.04, -0.05, -0.17]';
+x0 = [16.9, 3.89, -0.11, -0.09]';
+x_nl(:,1) = x0;
 x(:,1) = x0; % initial condition
 usim = zeros(dim.nu, size(T, 2)-1);
 mpcmats = []; % Calculated first time and then reused
 
-for t = 1:1:size(T, 2)-1
-    model.x0 = x_nl(:,t); % 
-    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model, constraint, penalty, ...
+disp("MPC Constant Reference Tracking Started.");
+for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * Ts;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
+
+    % Get the initial state from the non-linear dynamics last step state
+    model.x0 = x_nl(:,k);
+
+    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr, ref, 0, model, constraint, penalty, ...
                                              terminal, mpcmats);
-    usim(:,t) = uk(:,1);
-    V_N(t) = FVAL;
-    tspan = [T(t), T(t+1)];
-    x_nl(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t));
-    x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
-    V_f(t) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
-    l_xu(t) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
-    l_xu0(t) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
+
+    % Get the first optimal control input from the MPC controller
+    usim(:,k) = uk(:,1);
+
+    % Optimal cost function value
+    V_N(k) = FVAL;
+
+    % Simlulate the non-linear dynamics with the current control input for
+    % Ts time (ZOH operation)
+    tspan = [T(k), T(k+1)];
+    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k));
+
+    x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+
+    % Control Lyapunov function
+    V_f(k) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
+
+    % Stage costs computed at different time steps
+    l_xu(k) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
+    l_xu0(k) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
+disp("MPC Constant Reference Tracking Finished.");
+
+%% Display MPC Constant Reference Tracking plots
 
 figure;
-stairs(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
-title("Control Lypanunov Function");
+stairs(V_f, 'LineWidth', 1.5);
+title("Control Lypanunov Function $V_f$");
 grid on;
 
 figure;
-stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
-title("Lypanunov Function Decrease");
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5); % Plot CLF inequality
+title("Control Lypanunov Function Inequality");
 grid on;
 
 figure;
-title("Actual State Response");
-subplot(2, 2, 1);
-stairs(x_nl(1,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 2);
-stairs(x_nl(2,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 3);
-stairs(x_nl(3,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 4);
-stairs(x_nl(4,:), 'LineWidth', 2), grid on;
-
-figure;
-stairs(usim, 'LineWidth', 2), grid on;
-title("Control Input");
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
+title("Lypanunov Function Inequality");
 grid on;
 
-%% Simulation of reference
-
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (floor(tt/Ts)+1)));
-
-xp = @(tt) ((r * cos(beta) * x(1, (floor(tt/Ts)+1)) + (l * sin(x(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (floor(tt/Ts)+1)) + (l * cos(x(3, (floor(tt/Ts)+1))))));
-
 figure;
-axis equal;
-hold on;
-fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+sgtitle("Reference Tracking MPC Response");
+subplot(5, 1, 1);
+stairs(x_nl(1,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$\theta_{w}$');
+subplot(5, 1, 2);
+stairs(x_nl(2,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$$\dot{\theta_{w}}$$');
+subplot(5, 1, 3);
+stairs(x_nl(3,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$\theta_{p}$');
+subplot(5, 1, 4);
+stairs(x_nl(4,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$$\dot{\theta_{p}}$$');
+subplot(5, 1, 5);
+stairs(usim, 'LineWidth', 1.5), grid on;
+ylabel('$u$');
+xlabel('Time Step $k$');
+grid on;
 
-% Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
+%% Simulation of reference tracking
 
-% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
-hold off;
+setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
 
-%% Output feedback
+%% Output Feedback with Disturbance Rejection
 
 Bd = B;
 C_out = [1 0 0 0; 0 0 1 0; 0 0 0 1];
 Cd = [0.5; 0; 0];
+model.C = C_out;
+model.Bd = Bd;
+model.Cd = Cd;
 
 if ((rank([eye(dim.nx) - A -Bd; C_out Cd]) - dim.nx - 1) ~= 0) || (rank(obsv(A,C_out)) ~= dim.nx)
     warning ('Augmented state is not observable');
 end
 
+% Augmented system
 aug_sys.A = [A Bd; zeros(1,dim.nx) eye(1,size(Bd,2))];
 aug_sys.B = [B;zeros(1,size(B,2))];
 aug_sys.C = [C_out Cd];
@@ -395,79 +502,97 @@ end
 disturbance = 0.5;
 d_hat = 0;
 
-yref = [6; 0; 0]; %10
+yref = [6; 0; 0];
 
 xr = zeros(dim.nx,1);
 ur = [];
 
 x0 = [1, 0.8, 0.02, -0.06]';
 %x0 = [-10.5, 5.04, 0.01, -0.17]';
+
 x(:,1) = x0;
+x_nl(:,1) = x0;
 
 ye = zeros(length(yref),size(T, 2)-1);
 ye(:,1)=aug_sys.C*[x0; disturbance(1)];
 
 xehat = zeros(dim.nx+1, size(T, 2));
-xehat(:,1)=[1; 0; 0; 0; d_hat];
+xehat(:,1)=[0; 0; 0; 0; d_hat];
 
 usim = zeros(dim.nu, size(T, 2)-1);
 d_est = zeros(1,size(T, 2)-1);
 mpcmats = [];
 
-H = blkdiag(zeros(dim.nx), eye(dim.nu));
-h = zeros(dim.nx+dim.nu, 1);
-    
-options1 = optimoptions(@quadprog); 
-options1.OptimalityTolerance=1e-20;
-options1.ConstraintTolerance=1.0000e-15;
-options1.Display='off';
+disp("Offset Free Output Feedback MPC Started.");
+for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * Ts;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
 
-for t = 1:1:size(T, 2)-1
-
-    d_hat = xehat(end,t);
-    d_est(t) = d_hat;
+    % Get the estimated disturbance from the observer
+    d_hat = xehat(end,k);
+    d_est(k) = d_hat;
     dist = repmat((Bd*d_hat),N,1);
 
-    eqconstraints.A = [eye(dim.nx) - A, -B; C_out, zeros(size(C_out, 1), dim.nu)];
-    eqconstraints.b = [Bd*d_hat; yref-(Cd*d_hat)];
-    
-    xur=quadprog(H,h,[],[],eqconstraints.A,eqconstraints.b,[],[],[],options1);
-    xr = xur(1:dim.nx);
-    ur = xur(dim.nx+1:end);
+    % Online calculation of xref, uref
+    [xr, ur] = targetSelector(model, constraint, dim, d_hat, yref);
     ref = [repmat([xr;ur],N,1); xr];
-    
-    model.x0 = xehat(1:end-1,t);
+
+    % Get the initial estimated state from the observer
+    model.x0 = xehat(1:end-1,k);
 
     [xk, uk, FVAL, status] = linearmpc(xr,ref, dist, model, constraint, penalty, ...
                                              terminal, []);
-    usim(:,t) = uk(:,1);
 
-    tspan = [T(t), T(t+1)];
-    x(:,t+1) = NLSystemDynamics(x(:,t), tspan, usim(:,t)+disturbance); % given that Bd = B
-    ye(:,t) = aug_sys.C * [x(:,t); disturbance];
-    xehat(:,t+1) = aug_sys.A*xehat(:,t) + aug_sys.B*usim(:,t) + L_obs*(ye(:,t) - (aug_sys.C*xehat(:,t)));
-    V_N(t) = FVAL;
+    % Get the first optimal control input from the MPC controller
+    usim(:,k) = uk(:,1);
 
+    % Simlulate the non-linear dynamics with the current control input for
+    % Ts time (ZOH operation)
+    tspan = [T(k), T(k+1)];
+    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k)+disturbance); % given that Bd = B
 
-    %x(:,t+1) = A*x(:,t) + B*usim(:,t); %for stability
-    V_f(t) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
-    l_xu(t) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
-    l_xu0(t) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
+    % Measure the noisy output from the non-linear system
+    ye(:,k) = aug_sys.C * [x_nl(:,k); disturbance];
+
+    % Using observer estimate the states
+    xehat(:,k+1) = aug_sys.A*xehat(:,k) + aug_sys.B*usim(:,k) + L_obs*(ye(:,k) - (aug_sys.C*xehat(:,k)));
+
+    % Optimal cost function value
+    V_N(k) = FVAL;
+
+    %x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+
+    % Control Lyapunov function
+    V_f(k) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
+
+    % Stage costs computed at different time steps
+    l_xu(k) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
+    l_xu0(k) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
+disp("Offset Free Output Feedback MPC Finished.");
+
+%% Display Offset Free Output Feedback MPC plots
 
 figure;
-stairs(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
-title("Control Lypanunov Function");
+stairs(V_f, 'LineWidth', 1.5);
+title("Control Lypanunov Function $V_f$");
 grid on;
 
 figure;
-stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
-title("Lypanunov Function Decrease");
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5); % Plot CLF inequality
+title("Control Lypanunov Inequality");
+grid on;
+
+figure;
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
+title("Lypanunov Function Inequality");
 grid on;   
 
 figure;
@@ -475,59 +600,65 @@ stairs(d_est);
 title("Estimated Disturbance");
 grid on;
 
+
 figure;
-title("Estimated State Response");
-subplot(2, 2, 1);
-stairs(xehat(1,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 2);
-stairs(xehat(2,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 3);
-stairs(xehat(3,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 4);
-stairs(xehat(4,:), 'LineWidth', 2), grid on;
+sgtitle("Offset-free Output Feedback MPC Response ");
+subplot(5, 1, 1);
+hold on;
+grid on;
+hplots(1) = stairs(xehat(1,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(1,1:end-1), 'LineStyle', '--', 'LineWidth', 1.5);
+ylabel('$\theta_{w}$');
+hold off;
+subplot(5, 1, 2);
+hold on;
+grid on;
+hplots(1) = stairs(xehat(2,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(2,1:end-1), 'LineStyle', '--', 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{w}}$$');
+hold off;
+subplot(5, 1, 3);
+hold on;
+grid on;
+hplots(1) = stairs(xehat(3,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(3,1:end-1), 'LineStyle', '--', 'LineWidth', 1.5);
+ylabel('$\theta_{p}$');
+hold off;
+subplot(5, 1, 4);
+hold on;
+grid on;
+hplots(1) = stairs(xehat(4,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(4,1:end-1), 'LineStyle', '--', 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{p}}$$');
+hold off;
+xlabel('Time Step $k$');
+
+hL = legend({'Es', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
 
 figure;
 title("Actual State Response");
 subplot(2, 2, 1);
-stairs(x(1,:), 'LineWidth', 2), grid on;
+stairs(x_nl(1,:), 'LineWidth', 1.5), grid on;
 subplot(2, 2, 2);
-stairs(x(2,:), 'LineWidth', 2), grid on;
+stairs(x_nl(2,:), 'LineWidth', 1.5), grid on;
 subplot(2, 2, 3);
-stairs(x(3,:), 'LineWidth', 2), grid on;
+stairs(x_nl(3,:), 'LineWidth', 1.5), grid on;
 subplot(2, 2, 4);
-stairs(x(4,:), 'LineWidth', 2), grid on;
+stairs(x_nl(4,:), 'LineWidth', 1.5), grid on;
 
 
 figure;
-stairs(ye(1,:), 'LineWidth', 2), grid on;
+stairs(ye(1,:), 'LineWidth', 1.5), grid on;
 title("Output");
 
 figure;
-stairs(usim, 'LineWidth', 2), grid on;
+stairs(usim, 'LineWidth', 1.5), grid on;
 title("Control Input");
 
 %% Simulation of output feedback
 
-% Non-linear equations
-xw = @(tt) (r * cos(beta) * x(1, (floor(tt/Ts)+1)));
-yw = @(tt) (r * sin(beta) * x(1, (floor(tt/Ts)+1)));
-
-xp = @(tt) ((r * cos(beta) * x(1, (floor(tt/Ts)+1)) + (l * sin(x(3, (floor(tt/Ts)+1))))));
-yp = @(tt) ((r * sin(beta) * x(1, (floor(tt/Ts)+1)) + (l * cos(x(3, (floor(tt/Ts)+1))))));
-
-figure;
-axis equal;
-hold on;
-fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-% Plot the L-shaped line
-fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',20);
-
-% fanimator(@(tt) text(-0.3,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',20);
-hold off;
+setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% Functions
 
@@ -604,4 +735,57 @@ function [X] = NLSystemDynamics(x0, tspan, u)
     [~, x_step] = ode45(@(t, Y)M(t, Y, Tau), tspan, x0);
     X = x_step(end, :)';
     X(3) = X(3) - theta_p_eq; % Subtract the eqbm pendulum angle to feed it back to the linear system
+end
+
+function [xr, ur] = targetSelector(LTI, Z, dim, d_hat, yref)
+
+    eqconstraints.A = [eye(dim.nx) - LTI.A, -LTI.B; LTI.C, zeros(size(LTI.C, 1), dim.nu)];
+    eqconstraints.b = [LTI.Bd * d_hat; yref - (LTI.Cd*d_hat)];
+
+    ineqconstraints.A = [Z.('G'), Z.('H')];
+    ineqconstraints.b = Z.('psi');
+
+    H = blkdiag(zeros(dim.nx), eye(dim.nu));
+    h = zeros(dim.nx+dim.nu, 1);
+
+    options1 = optimoptions(@quadprog);
+    options1.OptimalityTolerance=1e-20;
+    options1.ConstraintTolerance=1.0000e-15;
+    options1.Display='off';
+    xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
+    xr = xur(1:dim.nx);
+    ur = xur(dim.nx+1:end);
+end
+
+function setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim)
+    
+    % Calculate FPS
+    Fps = floor(1/Ts);
+
+    % Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
+    x_nl(3,:) = x_nl(3,:) + theta_p_eq;
+    
+    % Non-linear equations
+    xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
+    yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
+    
+    xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
+    yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
+    
+    scaling_factor = 0.6;
+    angle = -pi/3;
+    
+    figure;
+    axis equal;
+    hold on;
+    fanimator(@(tt) plot(xp(tt), yp(tt),'ro','MarkerSize', 10,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot([xw(Ts) xw(tt)],[yw(Ts) yw(tt)],'b-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    
+    % Plot the L-shaped line
+    fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    
+    fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    hold off;
 end

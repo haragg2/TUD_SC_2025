@@ -91,7 +91,8 @@ end
 
 A_K = A + B * K;
 
-x0 = [29.4; -18.1; 0.13; -0.28];        % initial condition
+x0 = [-5, 9.04, -0.05, -0.17]';         % initial condition for Xf
+%x0 = [16.9, 3.89, -0.11, -0.09]';       % initial condition for Xn
 u = zeros(size(T));                     % 0 input
 sysd_lqr = ss(A_K, [], C, D, Ts);       
 
@@ -157,12 +158,12 @@ grid on;
 
 subplot(2, 2, 3);
 hold on;
-hplots(1) = plot(x_samples(4, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-hplots(2) = plot(x_samples(4, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
-hplots(3) = plot(x_samples(4, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hplots(1) = plot(x_samples(4, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(4, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(4, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
 hold off;
 xlabel('$$\dot{\theta_{p}}$$');
-ylabel('$\theta_{p}$');
+ylabel('$\theta_{w}$');
 grid on;
 
 subplot(2, 2, 4);
@@ -227,13 +228,13 @@ grid on;
 subplot(2, 2, 3);
 hold on;
 if ~isempty(xp_out_Xf)
-    hplots(3) = plot(xp_out_Xf(4, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+    hplots(3) = plot(xp_out_Xf(4, :), xp_out_Xf(1, :), 'r+', 'MarkerSize', 3);
 end
-hplots(1) = plot(x_in_Xf(4, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
-hplots(2) = plot(xp_in_Xf(4, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+hplots(1) = plot(x_in_Xf(4, :), x_in_Xf(1, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(4, :), xp_in_Xf(1, :), 'g+', 'MarkerSize', 3);
 hold off;
 xlabel('$$\dot{\theta_{p}}$$');
-ylabel('$\theta_{p}$');
+ylabel('$\theta_{w}$');
 grid on;
 
 subplot(2, 2, 4);
@@ -257,8 +258,8 @@ constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
-x0 = [-5, 9.04, -0.05, -0.17]';
-x0 = [16.9, 3.89, -0.11, -0.09]';
+x0 = [-5, 9.04, -0.05, -0.17]';     % initial condition for Xf
+%x0 = [16.9, 3.89, -0.11, -0.09]';  % initial condition for XN
 xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
 
 x = zeros(dim.nx, size(T, 2));
@@ -310,41 +311,69 @@ disp("MPC Regulation Finished.");
 
 %% Display MPC Regulation plots
 figure;
-stairs(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-stairs(V_f, 'LineWidth', 2);
+stairs(V_f, 'LineWidth', 1.5);
 title("Control Lypanunov Function $V_f$");
 grid on;
 
 % Plot CLF inequality
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2);
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5);
 title("Control Lypanunov Function Inequality");
 grid on;
 
 % Plot V_N inequality
 figure;
-stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
 title("Lypanunov Function Inequality");
 grid on;
 
 figure;
-title("Actual State Response");
-subplot(2, 2, 1);
-stairs(x_nl(1,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 2);
-stairs(x_nl(2,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 3);
-stairs(x_nl(3,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 4);
-stairs(x_nl(4,:), 'LineWidth', 2), grid on;
+sgtitle("Regulation MPC vs Unconstrained LQR Response");
+subplot(5, 1, 1);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(1,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,1), 'LineWidth', 1.5);
+ylabel('$\theta_{w}$');
+hold off;
+subplot(5, 1, 2);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(2,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{w}}$$');
+hold off;
+subplot(5, 1, 3);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(3,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,3), 'LineWidth', 1.5);
+ylabel('$\theta_{p}$');
+hold off;
+subplot(5, 1, 4);
+hold on;
+grid on;
+hplots(1) = stairs(x_nl(4,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{p}}$$');
+hold off;
+subplot(5, 1, 5);
+hold on;
+grid on;
+hplots(1) = stairs(usim, 'LineWidth', 1.5);
+hplots(1) = stairs(u_LQ(1:end-1), 'LineWidth', 1.5);
+hold off;
+xlabel('Time Step $k$');
+ylabel('$u$');
 
-figure;
-stairs(usim, 'LineWidth', 2), grid on;
-title("Control Input");
+hL = legend({'MPC', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
 
 %%  Simulation of regulation
 
@@ -358,7 +387,6 @@ yref = [6; 0; 0; 0];
 [xr, ur] = targetSelector(model, constraint, dim, 0, yref);
 ref = [repmat([xr;ur],N,1); xr];
 
-x0 = [2, 5.04, -0.05, -0.1]';
 x0 = [16.9, 3.89, -0.11, -0.09]';
 x_nl(:,1) = x0;
 x(:,1) = x0; % initial condition
@@ -403,39 +431,43 @@ disp("MPC Constant Reference Tracking Finished.");
 %% Display MPC Constant Reference Tracking plots
 
 figure;
-stairs(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-stairs(V_f, 'LineWidth', 2);
+stairs(V_f, 'LineWidth', 1.5);
 title("Control Lypanunov Function $V_f$");
 grid on;
 
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5); % Plot CLF inequality
 title("Control Lypanunov Function Inequality");
 grid on;
 
 figure;
-stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
 title("Lypanunov Function Inequality");
 grid on;
 
 figure;
-title("Actual State Response");
-subplot(2, 2, 1);
-stairs(x_nl(1,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 2);
-stairs(x_nl(2,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 3);
-stairs(x_nl(3,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 4);
-stairs(x_nl(4,:), 'LineWidth', 2), grid on;
-
-figure;
-stairs(usim, 'LineWidth', 2), grid on;
-title("Control Input");
+sgtitle("Reference Tracking MPC Response");
+subplot(5, 1, 1);
+stairs(x_nl(1,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$\theta_{w}$');
+subplot(5, 1, 2);
+stairs(x_nl(2,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$$\dot{\theta_{w}}$$');
+subplot(5, 1, 3);
+stairs(x_nl(3,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$\theta_{p}$');
+subplot(5, 1, 4);
+stairs(x_nl(4,1:end-1), 'LineWidth', 1.5), grid on;
+ylabel('$$\dot{\theta_{p}}$$');
+subplot(5, 1, 5);
+stairs(usim, 'LineWidth', 1.5), grid on;
+ylabel('$u$');
+xlabel('Time Step $k$');
 grid on;
 
 %% Simulation of reference tracking
@@ -544,60 +576,73 @@ disp("Offset Free Output Feedback MPC Finished.");
 %% Display Offset Free Output Feedback MPC plots
 
 figure;
-stairs(V_N, 'LineWidth', 2);
+stairs(V_N, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
 grid on;
 
 figure;
-stairs(V_f, 'LineWidth', 2);
+stairs(V_f, 'LineWidth', 1.5);
 title("Control Lypanunov Function $V_f$");
 grid on;
 
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 2); % Plot CLF inequality
+stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5); % Plot CLF inequality
 title("Control Lypanunov Inequality");
 grid on;
 
 figure;
-stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 2);
+stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
 title("Lypanunov Function Inequality");
 grid on;   
 
 figure;
-stairs(d_est);
-title("Estimated Disturbance");
+sgtitle("Offset-free Output Feedback MPC Response");
+subplot(4, 1, 1);
+hold on;
 grid on;
+hplots(1) = stairs(xehat(1,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(1,1:end-1), 'LineWidth', 1.5);
+ylabel('$\theta_{w}$');
+hold off;
+subplot(4, 1, 2);
+hold on;
+grid on;
+hplots(1) = stairs(xehat(2,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(2,1:end-1), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{w}}$$');
+hold off;
+subplot(4, 1, 3);
+hold on;
+grid on;
+hplots(1) = stairs(xehat(3,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(3,1:end-1), 'LineWidth', 1.5);
+ylabel('$\theta_{p}$');
+hold off;
+subplot(4, 1, 4);
+hold on;
+grid on;
+hplots(1) = stairs(xehat(4,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_nl(4,1:end-1), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{p}}$$');
+hold off;
+xlabel('Time Step $k$');
+
+hL = legend({'Estimated States', 'Nonlinear States'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
 
 figure;
-title("Estimated State Response");
-subplot(2, 2, 1);
-stairs(xehat(1,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 2);
-stairs(xehat(2,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 3);
-stairs(xehat(3,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 4);
-stairs(xehat(4,:), 'LineWidth', 2), grid on;
-
-figure;
-title("Actual State Response");
-subplot(2, 2, 1);
-stairs(x_nl(1,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 2);
-stairs(x_nl(2,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 3);
-stairs(x_nl(3,:), 'LineWidth', 2), grid on;
-subplot(2, 2, 4);
-stairs(x_nl(4,:), 'LineWidth', 2), grid on;
-
-
-figure;
-stairs(ye(1,:), 'LineWidth', 2), grid on;
-title("Output");
-
-figure;
-stairs(usim, 'LineWidth', 2), grid on;
-title("Control Input");
+sgtitle("Offset-free Output Feedback MPC Response");
+subplot(3, 1, 1);
+stairs(d_est, 'LineWidth', 1.5), grid on;
+ylabel("$\hat{d}$");
+grid on;
+subplot(3, 1, 2);
+stairs(ye(1,:), 'LineWidth', 1.5), grid on;
+ylabel("$y = x_1 + 0.5d$");
+subplot(3, 1, 3);
+stairs(usim, 'LineWidth', 1.5), grid on;
+ylabel("$u$");
+xlabel('Time Step $k$');
 
 %% Simulation of output feedback
 
