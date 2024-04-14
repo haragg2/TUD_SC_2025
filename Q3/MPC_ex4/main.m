@@ -91,8 +91,8 @@ end
 
 A_K = A + B * K;
 
-x0 = [-5, 9.04, -0.05, -0.17]';         % initial condition for Xf
-%x0 = [16.9, 3.89, -0.11, -0.09]';       % initial condition for Xn
+%x0 = [-5, 9.04, -0.05, -0.17]';         % initial condition for Xf
+x0 = [16.9, 3.89, -0.11, -0.09]';       % initial condition for Xn
 u = zeros(size(T));                     % 0 input
 sysd_lqr = ss(A_K, [], C, D, Ts);       
 
@@ -258,8 +258,8 @@ constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
-x0 = [-5, 9.04, -0.05, -0.17]';     % initial condition for Xf
-%x0 = [16.9, 3.89, -0.11, -0.09]';  % initial condition for XN
+%x0 = [-5, 9.04, -0.05, -0.17]';     % initial condition for Xf
+x0 = [16.9, 3.89, -0.11, -0.09]';  % initial condition for XN
 xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
 
 x = zeros(dim.nx, size(T, 2));
@@ -283,7 +283,7 @@ for k = 1:1:size(T, 2)-1
     end
 
     % Get the initial state from the non-linear dynamics last step state
-    model.x0 = x_nl(:,k);
+    model.x0 = x(:,k);
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,0,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
 
@@ -307,9 +307,16 @@ for k = 1:1:size(T, 2)-1
     l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
     l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
 end
+
+V_N_reg = V_N;
+V_f_reg = V_f;
+CLF_ineq_reg = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
+V_N_ineq_reg = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
+
 disp("MPC Regulation Finished.");
 
 %% Display MPC Regulation plots
+
 figure;
 stairs(V_N, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
@@ -401,7 +408,7 @@ for k = 1:1:size(T, 2)-1
     end
 
     % Get the initial state from the non-linear dynamics last step state
-    model.x0 = x_nl(:,k);
+    model.x0 = x(:,k);
 
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr, ref, 0, model, constraint, penalty, ...
                                              terminal, mpcmats);
@@ -426,6 +433,12 @@ for k = 1:1:size(T, 2)-1
     l_xu(k) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
     l_xu0(k) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
+
+V_N_ref = V_N;
+V_f_ref = V_f;
+CLF_ineq_ref = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
+V_N_ineq_ref = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
+
 disp("MPC Constant Reference Tracking Finished.");
 
 %% Display MPC Constant Reference Tracking plots
@@ -571,29 +584,71 @@ for k = 1:1:size(T, 2)-1
     l_xu(k) = 0.5*(xk(:,end-1)-xr)'*Q*(xk(:,end-1)-xr) + 0.5*(uk(:,end)-ur)'*R*(uk(:,end)-ur);
     l_xu0(k) = 0.5*(xk(:,1)-xr)'*Q*(xk(:,1)-xr) + 0.5*(uk(:,1)-ur)'*R*(uk(:,1)-ur);
 end
+
+V_N_off = V_N;
+V_f_off = V_f;
+CLF_ineq_off = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
+V_N_ineq_off = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
+
 disp("Offset Free Output Feedback MPC Finished.");
 
 %% Display Offset Free Output Feedback MPC plots
 
 figure;
-stairs(V_N, 'LineWidth', 1.5);
+hold on;
+stairs(V_N_reg, 'LineWidth', 1.5);
+stairs(V_N_ref, 'LineWidth', 1.5);
+stairs(V_N_off, 'LineWidth', 1.5);
 title("Optimal Cost funcion $V_N^0$");
+legend("Regulation", "Reference", "Offset-free");
+hold off;
 grid on;
 
 figure;
-stairs(V_f, 'LineWidth', 1.5);
+hold on;
+stairs(V_f_reg, 'LineWidth', 1.5);
+stairs(V_f_ref, 'LineWidth', 1.5);
+stairs(V_f_off, 'LineWidth', 1.5);
 title("Control Lypanunov Function $V_f$");
+legend("Regulation", "Reference", "Offset-free");
+hold off;
 grid on;
 
+% figure;
+% stairs(V_f, 'LineWidth', 1.5);
+% title("Control Lypanunov Function $V_f$");
+% grid on;
+
 figure;
-stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5); % Plot CLF inequality
+hold on;
+stairs(V_N_ineq_reg, 'LineWidth', 1.5);
+stairs(V_N_ineq_ref, 'LineWidth', 1.5);
+stairs(V_N_ineq_off, 'LineWidth', 1.5);
 title("Control Lypanunov Inequality");
+legend("Regulation", "Reference", "Offset-free");
+hold off;
 grid on;
 
+% figure;
+% stairs(V_f(2:end)-V_f(1:end-1)+l_xu(2:end), 'LineWidth', 1.5); % Plot CLF inequality
+% title("Control Lypanunov Inequality");
+% grid on;
+
 figure;
-stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
+hold on;
+stairs(CLF_ineq_reg, 'LineWidth', 1.5);
+stairs(CLF_ineq_ref, 'LineWidth', 1.5);
+stairs(CLF_ineq_off, 'LineWidth', 1.5);
 title("Lypanunov Function Inequality");
-grid on;   
+legend("Regulation", "Reference", "Offset-free");
+hold off;
+grid on;
+
+
+% figure;
+% stairs(V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end)), 'LineWidth', 1.5);
+% title("Lypanunov Function Inequality");
+% grid on;   
 
 figure;
 sgtitle("Offset-free Output Feedback MPC Response");
