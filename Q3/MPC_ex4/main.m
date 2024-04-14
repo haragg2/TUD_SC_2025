@@ -7,6 +7,22 @@ set(groot,'defaulttextinterpreter','latex');
 set(groot, 'defaultAxesTickLabelInterpreter','latex');  
 set(groot, 'defaultLegendInterpreter','latex');
 
+% Initialize the choice variable
+sm_nl_sys = -1;
+
+% Loop until a valid choice (0 or 1) is entered
+while sm_nl_sys ~= 0 && sm_nl_sys ~= 1
+    sm_nl_sys = input('Enter 0 to simulate the linearized system or 1 to simulate the non-linear system: ');
+
+    if sm_nl_sys == 0
+        disp('Simulating the linearized system...');
+    elseif sm_nl_sys == 1
+        disp('Simulating the non-linear system...');
+    else
+        disp('Invalid input. Please enter either 0 or 1.');
+    end
+end
+
 %% Model definition
 
 % Model Parameters
@@ -258,13 +274,12 @@ constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
-%x0 = [-5, 9.04, -0.05, -0.17]';     % initial condition for Xf
 x0 = [16.9, 3.89, -0.11, -0.09]';  % initial condition for XN
 xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
 
 x = zeros(dim.nx, size(T, 2));
-x_nl = zeros(dim.nx, size(T, 2));
-x_nl(:,1) = x0;
+% x_nl = zeros(dim.nx, size(T, 2));
+% x_nl(:,1) = x0;
 x(:,1) = x0;
 
 usim = zeros(dim.nu, size(T, 2)-1);
@@ -283,7 +298,7 @@ for k = 1:1:size(T, 2)-1
     end
 
     % Get the initial state from the non-linear dynamics last step state
-    model.x0 = x_nl(:,k);
+    model.x0 = x(:,k);
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,0,0,model, constraint, penalty, ...
                                              terminal, mpcmats);
 
@@ -293,12 +308,15 @@ for k = 1:1:size(T, 2)-1
     % Optimal cost function value
     V_N(k) = FVAL;
 
-    % Simlulate the non-linear dynamics with the current control input for
-    % Ts time (ZOH operation)
-    tspan = [T(k), T(k+1)];
-    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k));
-
-    x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+    if sm_nl_sys == 1
+        % Simlulate the non-linear dynamics with the current control input for
+        % Ts time (ZOH operation)
+        tspan = [T(k), T(k+1)];
+        x(:,k+1) = NLSystemDynamics(x(:,k), tspan, usim(:,k));
+    else
+        % Simlulate the linearized system
+        x(:,k+1) = A*x(:,k) + B*usim(:,k);
+    end
 
     % Control Lyapunov function
     V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
@@ -322,28 +340,28 @@ sgtitle("Regulation MPC vs Unconstrained LQR Response");
 subplot(5, 1, 1);
 hold on;
 grid on;
-hplots(1) = stairs(x_nl(1,1:end-1), 'LineWidth', 1.5);
+hplots(1) = stairs(x(1,1:end-1), 'LineWidth', 1.5);
 hplots(2) = stairs(x_LQ(1:end-1,1), 'LineWidth', 1.5);
 ylabel('$\theta_{w}$');
 hold off;
 subplot(5, 1, 2);
 hold on;
 grid on;
-hplots(1) = stairs(x_nl(2,1:end-1), 'LineWidth', 1.5);
+hplots(1) = stairs(x(2,1:end-1), 'LineWidth', 1.5);
 hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
 ylabel('$$\dot{\theta_{w}}$$');
 hold off;
 subplot(5, 1, 3);
 hold on;
 grid on;
-hplots(1) = stairs(x_nl(3,1:end-1), 'LineWidth', 1.5);
+hplots(1) = stairs(x(3,1:end-1), 'LineWidth', 1.5);
 hplots(2) = stairs(x_LQ(1:end-1,3), 'LineWidth', 1.5);
 ylabel('$\theta_{p}$');
 hold off;
 subplot(5, 1, 4);
 hold on;
 grid on;
-hplots(1) = stairs(x_nl(4,1:end-1), 'LineWidth', 1.5);
+hplots(1) = stairs(x(4,1:end-1), 'LineWidth', 1.5);
 hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
 ylabel('$$\dot{\theta_{p}}$$');
 hold off;
@@ -362,7 +380,7 @@ set(hL, 'Location', 'southoutside', 'Box', 'off');
 
 %%  Simulation of regulation
 
-setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
+setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% MPC - Reference Tracking
 
@@ -373,7 +391,7 @@ yref = [6; 0; 0; 0];
 ref = [repmat([xr;ur],N,1); xr];
 
 x0 = [16.9, 3.89, -0.11, -0.09]';
-x_nl(:,1) = x0;
+% x_nl(:,1) = x0;
 x(:,1) = x0; % initial condition
 usim = zeros(dim.nu, size(T, 2)-1);
 mpcmats = []; % Calculated first time and then reused
@@ -386,7 +404,7 @@ for k = 1:1:size(T, 2)-1
     end
 
     % Get the initial state from the non-linear dynamics last step state
-    model.x0 = x_nl(:,k);
+    model.x0 = x(:,k);
 
     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr, ref, 0, model, constraint, penalty, ...
                                              terminal, mpcmats);
@@ -397,12 +415,15 @@ for k = 1:1:size(T, 2)-1
     % Optimal cost function value
     V_N(k) = FVAL;
 
-    % Simlulate the non-linear dynamics with the current control input for
-    % Ts time (ZOH operation)
-    tspan = [T(k), T(k+1)];
-    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k));
-
-    x(:,k+1) = A*x(:,k) + B*usim(:,k); %for stability
+    if sm_nl_sys == 1
+        % Simlulate the non-linear dynamics with the current control input for
+        % Ts time (ZOH operation)
+        tspan = [T(k), T(k+1)];
+        x(:,k+1) = NLSystemDynamics(x(:,k), tspan, usim(:,k));
+    else
+        % Simlulate the linearized system
+        x(:,k+1) = A*x(:,k) + B*usim(:,k);
+    end
 
     % Control Lyapunov function
     V_f(k) = 0.5*(xk(:,end)-xr)'*P*(xk(:,end)-xr);
@@ -424,16 +445,16 @@ disp("MPC Constant Reference Tracking Finished.");
 figure;
 sgtitle("Reference Tracking MPC Response");
 subplot(5, 1, 1);
-stairs(x_nl(1,1:end-1), 'LineWidth', 1.5), grid on;
+stairs(x(1,1:end-1), 'LineWidth', 1.5), grid on;
 ylabel('$\theta_{w}$');
 subplot(5, 1, 2);
-stairs(x_nl(2,1:end-1), 'LineWidth', 1.5), grid on;
+stairs(x(2,1:end-1), 'LineWidth', 1.5), grid on;
 ylabel('$$\dot{\theta_{w}}$$');
 subplot(5, 1, 3);
-stairs(x_nl(3,1:end-1), 'LineWidth', 1.5), grid on;
+stairs(x(3,1:end-1), 'LineWidth', 1.5), grid on;
 ylabel('$\theta_{p}$');
 subplot(5, 1, 4);
-stairs(x_nl(4,1:end-1), 'LineWidth', 1.5), grid on;
+stairs(x(4,1:end-1), 'LineWidth', 1.5), grid on;
 ylabel('$$\dot{\theta_{p}}$$');
 subplot(5, 1, 5);
 stairs(usim, 'LineWidth', 1.5), grid on;
@@ -443,7 +464,7 @@ grid on;
 
 %% Simulation of reference tracking
 
-setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
+setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% Output Feedback with Disturbance Rejection
 
@@ -482,7 +503,7 @@ x0 = [1, 0.8, 0.02, -0.06]';
 %x0 = [-10.5, 5.04, 0.01, -0.17]';
 
 x(:,1) = x0;
-x_nl(:,1) = x0;
+% x_nl(:,1) = x0;
 
 ye = zeros(length(yref),size(T, 2)-1);
 ye(:,1)=aug_sys.C*[x0; disturbance(1)];
@@ -518,14 +539,19 @@ for k = 1:1:size(T, 2)-1
 
     % Get the first optimal control input from the MPC controller
     usim(:,k) = uk(:,1);
+    
+    if sm_nl_sys == 1
+        % Simlulate the non-linear dynamics with the current control input for
+        % Ts time (ZOH operation)
+        tspan = [T(k), T(k+1)];
+        x(:,k+1) = NLSystemDynamics(x(:,k), tspan, usim(:,k)+disturbance); % given that Bd = B
+    else
+        % Simlulate the linearized system
+        x(:,k+1) = A*x(:,k) + B*usim(:,k) + Bd*disturbance;
+    end
 
-    % Simlulate the non-linear dynamics with the current control input for
-    % Ts time (ZOH operation)
-    tspan = [T(k), T(k+1)];
-    x_nl(:,k+1) = NLSystemDynamics(x_nl(:,k), tspan, usim(:,k)+disturbance); % given that Bd = B
-
-    % Measure the noisy output from the non-linear system
-    ye(:,k) = aug_sys.C * [x_nl(:,k); disturbance];
+    % Measure the noisy output from the system
+    ye(:,k) = aug_sys.C * [x(:,k); disturbance];
 
     % Using observer estimate the states
     xehat(:,k+1) = aug_sys.A*xehat(:,k) + aug_sys.B*usim(:,k) + L_obs*(ye(:,k) - (aug_sys.C*xehat(:,k)));
@@ -558,28 +584,28 @@ subplot(4, 1, 1);
 hold on;
 grid on;
 hplots(1) = stairs(xehat(1,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_nl(1,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x(1,1:end-1), 'LineWidth', 1.5);
 ylabel('$\theta_{w}$');
 hold off;
 subplot(4, 1, 2);
 hold on;
 grid on;
 hplots(1) = stairs(xehat(2,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_nl(2,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x(2,1:end-1), 'LineWidth', 1.5);
 ylabel('$$\dot{\theta_{w}}$$');
 hold off;
 subplot(4, 1, 3);
 hold on;
 grid on;
 hplots(1) = stairs(xehat(3,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_nl(3,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x(3,1:end-1), 'LineWidth', 1.5);
 ylabel('$\theta_{p}$');
 hold off;
 subplot(4, 1, 4);
 hold on;
 grid on;
 hplots(1) = stairs(xehat(4,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_nl(4,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x(4,1:end-1), 'LineWidth', 1.5);
 ylabel('$$\dot{\theta_{p}}$$');
 hold off;
 xlabel('Time Step $k$');
@@ -603,7 +629,7 @@ xlabel('Time Step $k$');
 
 %% Simulation of output feedback
 
-setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim);
+setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
 
 %% Display Stability Plots
 
@@ -744,20 +770,22 @@ function [xr, ur] = targetSelector(LTI, Z, dim, d_hat, yref)
     ur = xur(dim.nx+1:end);
 end
 
-function setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim)
+function setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim)
     
     % Calculate FPS
     Fps = floor(1/Ts);
 
     % Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
-    x_nl(3,:) = x_nl(3,:) + theta_p_eq;
+    if sm_nl_sys == 1
+        x(3,:) = x(3,:) + theta_p_eq;
+    end
     
     % Non-linear equations
-    xw = @(tt) (r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)));
-    yw = @(tt) (r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)));
+    xw = @(tt) (r * cos(beta) * x(1, (floor(tt/Ts)+1)));
+    yw = @(tt) (r * sin(beta) * x(1, (floor(tt/Ts)+1)));
     
-    xp = @(tt) ((r * cos(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * sin(x_nl(3, (floor(tt/Ts)+1))))));
-    yp = @(tt) ((r * sin(beta) * x_nl(1, (floor(tt/Ts)+1)) + (l * cos(x_nl(3, (floor(tt/Ts)+1))))));
+    xp = @(tt) ((r * cos(beta) * x(1, (floor(tt/Ts)+1)) + (l * sin(x(3, (floor(tt/Ts)+1))))));
+    yp = @(tt) ((r * sin(beta) * x(1, (floor(tt/Ts)+1)) + (l * cos(x(3, (floor(tt/Ts)+1))))));
     
     scaling_factor = 0.6;
     angle = -pi/3;
@@ -773,8 +801,8 @@ function setupAnimation(x_nl, theta_p_eq, r, beta, l, Ts, T_sim)
     fanimator(@(tt) plot(xw(tt), yw(tt),'go','MarkerSize', 10,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
     
     % Plot the L-shaped line
-    fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
-    fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x_nl(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x_nl(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot([xw(tt) xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle)], [yw(tt) yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot([xw(tt)-scaling_factor*l*cos(x(3, (floor(tt/Ts)+1))-angle) xp(tt)], [yw(tt)+scaling_factor*l*sin(x(3, (floor(tt/Ts)+1))-angle) yp(tt)] ,'k-'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
     
     fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
     hold off;
