@@ -6,6 +6,7 @@ clc;
 set(groot,'defaulttextinterpreter','latex');  
 set(groot, 'defaultAxesTickLabelInterpreter','latex');  
 set(groot, 'defaultLegendInterpreter','latex');
+
 %% Linearize the system
 
 % Linearization point
@@ -28,10 +29,21 @@ Q = [40 0 0 0;
 R = 0.1;
 
 K_lqr = dlqr(sys_dis.A, sys_dis.B, Q, R);
-sys_cl = ss(sys_dis.A-sys_dis.B*K_lqr, sys_dis.B, sys_dis.C, sys_dis.D, h);
+sys_cl = ss(sys_dis.A - sys_dis.B*K_lqr, sys_dis.B, sys_dis.C, sys_dis.D, h);
 
 % Get the model function
 model = getModel();
+
+% all_data = load('../data/all_0.25_1_02.mat');
+% usim = 5*all_data.volt.Data(:);
+% T = all_data.volt.Time;
+% theta1_0 = detrend(all_data.th1.Data(:));
+% theta2_0 = detrend(all_data.th2.Data(:));
+% t_end = T(end);
+
+% x0 = [0.1, 0, 0, 0]';  % initial condition
+% x = zeros(4, size(T, 2));
+% x(:,1) = x0;
 
 t_end = 5;
 T = 0:h:t_end;
@@ -39,7 +51,7 @@ T = 0:h:t_end;
 usim = zeros(1, size(T, 2)-1);
 t = zeros(size(T, 2)-1, 1);
 
-x0 = [0.2, 0, -0.1, 0]';  % initial condition
+x0 = [0.4, 0, -0.1, 0]';  % initial condition
 x = zeros(4, size(T, 2));
 x(:,1) = x0;
 
@@ -57,7 +69,7 @@ for k = 1:1:size(T, 2)-1
 
     tspan = [T(k), T(k+1)];
     % x(:,k+1) = NLSystemDynamics(x_eq, x(:,k), tspan, usim(:,k));
-    x(:,k+1) = NLSystemDynamics(model, x_eq, x(:,k), tspan, usim(:,k));
+    x(:,k+1) = NLSystemDynamics(model, x_eq, x(:,k), tspan, usim(:, k));
 
 end
 
@@ -101,7 +113,7 @@ hold off;
 xlabel('Time Step $k$');
 ylabel('$u$');
 
-
+%%
 
 setupAnimation(1, x, x_eq, h, t_end);
 %% Functions
@@ -274,10 +286,11 @@ function setupAnimation(sm_nl_sys, x, theta_eq, Ts, T_sim)
     hold on;
     fanimator(@(tt) plot([0 x1(tt)], [0 y1(tt)],'b-','LineWidth',2), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
     fanimator(@(tt) plot([x1(tt) (x1(tt)+x2(tt))], [y1(tt) (y1(tt)+y2(tt))],'b-','LineWidth',2), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
-    fanimator(@(tt) plot(x1(tt), y1(tt),'ro','MarkerSize', 15,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
-    fanimator(@(tt) plot((x1(tt)+x2(tt)), (y1(tt)+y2(tt)),'go','MarkerSize', 15,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot(x1(tt), y1(tt),'ro','MarkerSize', 18,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot((x1(tt)+x2(tt)), (y1(tt)+y2(tt)),'go','MarkerSize', 12,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot(0, 0,'ko','MarkerSize', 5,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
     
     % Add the timer
-    fanimator(@(tt) text(0,1.0,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) text(0,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
     hold off;
 end

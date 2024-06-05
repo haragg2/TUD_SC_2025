@@ -1,0 +1,556 @@
+clear all
+close all
+clc
+addpath('../functions/');
+
+% Set Latex interpreter for plots
+set(groot,'defaulttextinterpreter','latex');  
+set(groot, 'defaultAxesTickLabelInterpreter','latex');  
+set(groot, 'defaultLegendInterpreter','latex');
+
+% Initialize the choice variable
+sm_nl_sys = -1;
+
+% Loop until a valid choice (0 or 1) is entered
+while sm_nl_sys ~= 0 && sm_nl_sys ~= 1
+    sm_nl_sys = input('Enter 0 to simulate the linearized system or 1 to simulate the non-linear system: ');
+
+    if sm_nl_sys == 0
+        disp('Simulating the linearized system...');
+    elseif sm_nl_sys == 1
+        disp('Simulating the non-linear system...');
+    else
+        disp('Invalid input. Please enter either 0 or 1.');
+    end
+end
+
+%% Linearize the system
+
+% Linearization point
+theta1_eq = pi;
+theta2_eq = 0;
+
+x_eq = [theta1_eq; 0; theta2_eq; 0];
+
+[A, B, C, D] = LinearizeSystem(theta1_eq, theta2_eq);
+sys_ct = ss(A, B, C, D);
+
+%% Discretize the system
+
+h = 0.01;           % s; sampling time
+T_sim = 3;          % s; simulation time
+T = 0:h:T_sim;      % simulation time steps
+
+sys_dis = c2d(sys_ct, h);
+
+% Get the model function
+model = getModel();
+
+% System matrices
+A = sys_dis.A;
+B = sys_dis.B;
+C = sys_dis.C;
+D = sys_dis.D;
+
+%% Bounds
+
+xlb = [-0.3; -8; -0.4; -15];
+xub = -xlb;
+ulb = -1;
+uub = 1;
+
+N = 5; % Horizon
+
+% Defines the dimensions
+dim.nx = size(sys_dis.A, 1);        % Number of states
+dim.nu = size(sys_dis.B, 2);        % Number of inputs
+dim.ny = size(sys_dis.C, 1);        % Number of outputs
+
+%% LQR
+
+% Tuning weights
+Q = [40 0 0 0;
+     0 10 0 0;
+     0 0 70 0;
+     0 0 0 10];
+
+R = 0.1;
+
+% Find LQR gain matrix
+[K, P] = dlqr(A, B, Q, R);
+K = -K; % Sign convention
+
+% Controllability check
+ctrb_sys = ctrb(A, B);
+unco = length(A) - rank(ctrb_sys);
+if unco > 0
+    warning('Discretized linear model is uncontrollable');
+end
+
+% Observability check
+obs_sys = obsv(A, C);
+unob = length(A) - rank(obs_sys);
+if unob > 0
+    warning('Discretized linear model is unobservable');
+end
+
+% Check if (A, Q') has no unobservable modes on the unit circle
+isNoUnobservableModes = rank(ctrb(A, transpose(Q))) == size(A,1);
+if isNoUnobservableModes == 0
+    warning("Pair (A, Q') has some unobservable modes");
+end
+
+A_K = A + B * K;
+
+x0 = [0.15, 0, -0.1, 0]';       % initial condition for Xn
+u = zeros(size(T));                     % 0 input
+sysd_lqr = ss(A_K, [], C, D, h);       
+
+figure;
+grid on;
+lsim(sysd_lqr, u, T, x0);
+
+[~, t_LQ, x_LQ] = lsim(sysd_lqr, u, T, x0);
+u_LQ = K * x_LQ';
+
+figure;
+stairs(t_LQ, u_LQ);
+title('Control Input for LQ Control');
+xlabel('Time (seconds)');
+ylabel('Control Input');
+grid on;
+
+%% Compute X_f
+
+Xn = struct();
+V = struct();
+Z = struct();
+
+[Xn.('lqr'), V.('lqr'), Z.('lqr')] = findXn(A, B, K, N, xlb, xub, ulb, uub, 'lqr');
+
+%% Plot Xf and Xn
+Xf = Xn.lqr{1};
+X1 = Xn.lqr{floor(N/2)};
+X2 = Xn.lqr{N+1};
+
+% Generate 500000 random points within the specified bounds
+num_points = 500000;
+x_samples = bsxfun(@plus, xlb, bsxfun(@times, rand(numel(xlb), num_points), (xub - xlb)));
+% x_samples = [x_samples, [0.2654; -3.0552; -0.1543; 5.2605]];
+
+% Check if Ax <= b is satisfied for each point
+satisfied_points_Xf = all(Xf.A * x_samples <= Xf.b, 1);
+satisfied_points_X1 = all(X1.A * x_samples <= X1.b, 1);
+satisfied_points_X2 = all(X2.A * x_samples <= X2.b, 1);
+
+% Plot the points that satisfy the condition on the 2D plane
+figure;
+sgtitle('Projection of points satisfying $X.A*x <= X.b$ on 2D plane');
+hplots = gobjects(3, 1);
+subplot(2, 2, 1);
+hold on;
+hplots(1) = plot(x_samples(1, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(1, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(1, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hold off;
+xlabel('$\theta_{1}$');
+ylabel('$\theta_{2}$');
+grid on;
+
+subplot(2, 2, 2);
+hold on;
+hplots(1) = plot(x_samples(2, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(2, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(2, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{1}}$$');
+ylabel('$$\theta_{2}$$');
+grid on;
+
+subplot(2, 2, 3);
+hold on;
+hplots(1) = plot(x_samples(4, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(4, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(4, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{2}}$$');
+ylabel('$\theta_{1}$');
+grid on;
+
+subplot(2, 2, 4);
+hold on;
+hplots(1) = plot(x_samples(2, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
+hplots(2) = plot(x_samples(2, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
+hplots(3) = plot(x_samples(2, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{1}}$$');
+ylabel('$\theta_{1}$');
+grid on;
+hL = legend(hplots, {'$X_{15}$', '$X_{7}$', '$X_f$'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+
+% Set the location of the legend to 'southoutside' which positions
+% it below the subplots and centers it.
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
+%% Proof: Control input invariance of Xf
+
+x_in_Xf = x_samples(:, satisfied_points_Xf);
+xp_in_Xf_idx = all(Xf.A * (A_K*x_in_Xf) <= Xf.b, 1);
+xp_out_Xf_idx = ~xp_in_Xf_idx;
+
+xp_in_Xf = x_in_Xf(:, xp_in_Xf_idx);
+xp_out_Xf = x_in_Xf(:, xp_out_Xf_idx);
+
+% Plot the points that satisfy the condition on the 2D plane
+figure;
+sgtitle('Projection of points $x \in X_f$ and $x^+ = A_K*x$ on 2D plane');
+hplots = gobjects(2, 1);
+subplot(2, 2, 1);
+
+% Dummy input for hplot(3) to make it empty and legends to work
+hplots(3) = plot(x_in_Xf(1, :), x_in_Xf(1, :), 'r+', 'MarkerSize', 3);
+hplots(3).XData = [];
+hplots(3).YData = [];
+
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(1, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(1, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(1, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$\theta_{w}$');
+ylabel('$\theta_{p}$');
+grid on;
+
+subplot(2, 2, 2);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(2, :), xp_out_Xf(3, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(2, :), x_in_Xf(3, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(2, :), xp_in_Xf(3, :), 'g+', 'MarkerSize', 3);
+
+hold off;
+xlabel('$$\dot{\theta_{w}}$$');
+ylabel('$$\theta_{p}$$');
+grid on;
+
+subplot(2, 2, 3);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(4, :), xp_out_Xf(1, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(4, :), x_in_Xf(1, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(4, :), xp_in_Xf(1, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{p}}$$');
+ylabel('$\theta_{w}$');
+grid on;
+
+subplot(2, 2, 4);
+hold on;
+if ~isempty(xp_out_Xf)
+    hplots(3) = plot(xp_out_Xf(2, :), xp_out_Xf(1, :), 'r+', 'MarkerSize', 3);
+end
+hplots(1) = plot(x_in_Xf(2, :), x_in_Xf(1, :), 'bo', 'MarkerSize', 3);
+hplots(2) = plot(xp_in_Xf(2, :), xp_in_Xf(1, :), 'g+', 'MarkerSize', 3);
+hold off;
+xlabel('$$\dot{\theta_{w}}$$');
+ylabel('$\theta_{w}$');
+grid on;
+hL = legend(hplots, {'$x$', '$x^+ \in X_f$', '$x^+ \notin X_f$'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
+%% Regulation MPC
+
+model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
+constraint = Z.lqr;
+penalty = struct('Q', Q, 'R', R, 'P', P);
+terminal = Xn.lqr{1}; % LQR terminal set
+
+% x0 = [0.25, 0, -0.1, 0]';  % initial condition for XN
+x0 = [0.2654; -3.0552; -0.1543; 5.2605];
+xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
+ref = [repmat([xr;0],N,1); xr];
+
+x = zeros(dim.nx, size(T, 2));
+x(:,1) = x0;
+
+usim = zeros(dim.nu, size(T, 2)-1);
+V_N = zeros(size(T, 2)-1,1);
+V_f = zeros(size(T, 2)-1,1);
+l_xu = zeros(size(T, 2)-1,1);
+l_xu0 = zeros(size(T, 2)-1,1);
+t = zeros(size(T, 2)-1,1);
+mpcmats = []; % Calculated first time and then reused
+
+disp("MPC Regulation Started");
+for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * h;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
+
+    % Get the initial state from the non-linear dynamics last step state
+    model_mpc.x0 = x(:,k);
+    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model_mpc, constraint, penalty, ...
+                                             terminal, mpcmats);
+    if status ~= 1
+        disp("Error");
+        break;
+    end
+
+    % Get the first optimal control input from the MPC controller
+    usim(:,k) = uk(:,1);
+
+    % Optimal cost function value
+    V_N(k) = FVAL;
+
+    if sm_nl_sys == 1
+        % Simlulate the non-linear dynamics with the current control input for
+        % Ts time (ZOH operation)
+        tspan = [T(k), T(k+1)];
+        x(:,k+1) = NLSystemDynamics(model, x_eq, x(:,k), tspan, usim(:, k));
+    else
+        % Simlulate the linearized system
+        x(:,k+1) = A*x(:,k) + B*usim(:,k);
+    end
+
+    % Control Lyapunov function
+    V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
+
+    % Stage costs computed at different time steps
+    l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
+    l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
+end
+
+V_N_reg = V_N;
+V_f_reg = V_f;
+CLF_ineq_reg = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
+V_N_ineq_reg = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
+
+disp("MPC Regulation Finished.");
+
+% Display MPC Regulation plots
+
+figure;
+sgtitle("Regulation MPC vs Unconstrained LQR Response");
+subplot(5, 1, 1);
+hold on;
+grid on;
+hplots(1) = stairs(x(1,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,1), 'LineWidth', 1.5);
+ylabel('$\theta_{w}$');
+hold off;
+subplot(5, 1, 2);
+hold on;
+grid on;
+hplots(1) = stairs(x(2,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{w}}$$');
+hold off;
+subplot(5, 1, 3);
+hold on;
+grid on;
+hplots(1) = stairs(x(3,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,3), 'LineWidth', 1.5);
+ylabel('$\theta_{p}$');
+hold off;
+subplot(5, 1, 4);
+hold on;
+grid on;
+hplots(1) = stairs(x(4,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{p}}$$');
+hold off;
+subplot(5, 1, 5);
+hold on;
+grid on;
+hplots(1) = stairs(usim, 'LineWidth', 1.5);
+hplots(1) = stairs(u_LQ(1:end-1), 'LineWidth', 1.5);
+hold off;
+xlabel('Time Step $k$');
+ylabel('$u$');
+
+hL = legend({'MPC', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
+
+%%  Simulation of regulation
+
+% setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
+setupAnimation(1, x, x_eq, h, T_sim);
+
+%% Functions
+
+function [sys_A, sys_B, sys_C, sys_D] = LinearizeSystem(th1, th2)
+
+    syms u theta1(t) theta2(t)
+    theta1_dot = diff(theta1, t);
+    theta2_dot = diff(theta2, t);
+    [~, theta_ddot] = getModel();
+    vars = [theta1; theta1_dot; theta2; theta2_dot];
+    
+    % Compute the Jacobian
+    A_jac = symmatrix(jacobian(theta_ddot, vars));
+    
+    sym_A = [jacobian(theta1_dot,vars); A_jac(1,:);
+             jacobian(theta2_dot,vars); A_jac(2,:);];
+    
+    B_jac = symmatrix(jacobian(theta_ddot, u));
+    
+    sym_B = [jacobian(theta1_dot,u); B_jac(1,:);
+             jacobian(theta2_dot,u); B_jac(2,:);];
+    
+    % Identified parameters
+    a = 187.247;
+    g = 9.81;
+    I2 = 0.000110802;
+    m2 = 0.05914;
+    c2 = 0.0563237;
+    b2 = 5.65455e-05;
+    
+    A = 0.02;
+    B = I2 + m2*c2^2;
+    C = 0.0954944;
+    D = 0.015;
+    E = m2*c2;
+    F = 29.9204;
+
+    theta1 = th1;
+    theta2 = th2;
+    
+    % Evaluate the matrices
+    sys_A = eval(subs(sym_A));
+    sys_B = eval(subs(sym_B));
+    sys_C = [1, 0, 0, 0;
+             0, 0, 1, 0];
+    sys_D = [];
+end
+
+
+function [model, theta_ddot] = getModel()
+
+    syms I1 I2 m1 m2 c1 c2 l1 g b1 b2 a b u A B C D E F theta1(t) theta2(t)
+    
+    % A = I1 + m1*c1^2
+    % C = l1
+    % D = m1*c1 
+    % B = I2 + m2*c2^2;
+    % E = m2*c2;
+    % F = b + b1;
+
+    theta1_dot = diff(theta1, t);
+    theta2_dot = diff(theta2, t);
+
+    % Derivatives of theta1_dot and theta2_dot
+    theta1_ddot = diff(theta1_dot, t);
+    theta2_ddot = diff(theta2_dot, t);
+    
+    M_l = [A + m2*C^2 + B + 2*m2*C*c2*cos(theta2), B + m2*C*c2*cos(theta2);
+           B + m2*C*c2*cos(theta2), B];
+    
+    C_l = [F - 2*m2*C*c2*theta2_dot*sin(theta2), -m2*C*c2*theta2_dot*sin(theta2); 
+           m2*C*c2*theta1_dot*sin(theta2), b2];
+    
+    G_l = [(D + m2*C)*sin(theta1) + E*sin(theta1+theta2);
+           E*sin(theta1+theta2)];
+    
+    B_l = [a*u; 0];
+    
+    theta_ddot = inv(M_l)*(B_l - C_l*[theta1_dot; theta2_dot] - G_l * g);
+    theta_ddot_s = symmatrix(theta_ddot);
+    
+    % Identified parameters - copy paste
+    a = 187.247;
+    g = 9.81;
+    I2 = 0.000110802;
+    m2 = 0.05914;
+    c2 = 0.0563237;
+    b2 = 5.65455e-05;
+    
+    A = 0.02;
+    B = I2 + m2*c2^2;
+    C = 0.0954944;
+    D = 0.015;
+    E = m2*c2;
+    F = 29.9204;
+    
+    eq1 = theta1_ddot == theta_ddot_s(1, 1);
+    eq2 = theta2_ddot == theta_ddot_s(2, 1);
+    
+    eq1 = subs(eq1);
+    eq2 = subs(eq2);
+    
+    [V, S] = odeToVectorField(eq2, eq1);
+    MF = matlabFunction(V, 'vars', {'t','Y', 'u'});
+
+    model = MF;
+end
+
+function [X] = NLSystemDynamics(model, x_eq, x0, tspan, input_voltage)
+    
+    x0 = x0' + x_eq';
+    u = input_voltage;
+    [~, x_step] = ode45(@(t, Y) model(t, Y, u), tspan, x0);
+    X = x_step(end, :)' - x_eq;
+end
+
+% function [xr, ur] = targetSelector(LTI, Z, dim, d_hat, yref)
+% 
+%     eqconstraints.A = [eye(dim.nx) - LTI.A, -LTI.B; LTI.C, zeros(size(LTI.C, 1), dim.nu)];
+%     eqconstraints.b = [LTI.Bd * d_hat; yref - (LTI.Cd*d_hat)];
+% 
+%     ineqconstraints.A = [Z.('G'), Z.('H')];
+%     ineqconstraints.b = Z.('psi');
+% 
+%     H = blkdiag(zeros(dim.nx), eye(dim.nu));
+%     h = zeros(dim.nx+dim.nu, 1);
+% 
+%     options1 = optimoptions(@quadprog);
+%     options1.OptimalityTolerance=1e-20;
+%     options1.ConstraintTolerance=1.0000e-15;
+%     options1.Display='off';
+%     xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
+%     xr = xur(1:dim.nx);
+%     ur = xur(dim.nx+1:end);
+% end
+
+function setupAnimation(sm_nl_sys, x, theta_eq, Ts, T_sim)
+    l1 = 0.1;
+    l2 = 0.1;
+    
+    % Calculate FPS
+    Fps = floor(1/Ts);
+
+    % Add the eqbm pendulum angle for the non-linear system (linear to non-linear translation)
+    if sm_nl_sys == 1
+        x = x + theta_eq;
+    end
+    
+    % Non-linear equations
+    x1 = @(tt) (-l1 * sin(x(1, (floor(tt/Ts)+1))));
+    y1 = @(tt) (-l1 * cos(x(1, (floor(tt/Ts)+1))));
+    
+    x2 = @(tt) (-l2 * sin(x(1, (floor(tt/Ts)+1)) + x(3, (floor(tt/Ts)+1))));
+    y2 = @(tt) (-l2 * cos(x(1, (floor(tt/Ts)+1)) + x(3, (floor(tt/Ts)+1))));
+
+    figure;
+    xlabel("Horizontal Distance (m)");
+    ylabel("Vertical Distance (m)");
+    title("Rotated Pendulum");
+    xlim([-0.3 0.3]);
+    ylim([-0.3 0.3]);
+
+    hold on;
+    fanimator(@(tt) plot([0 x1(tt)], [0 y1(tt)],'b-','LineWidth',2), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot([x1(tt) (x1(tt)+x2(tt))], [y1(tt) (y1(tt)+y2(tt))],'b-','LineWidth',2), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot(x1(tt), y1(tt),'ro','MarkerSize', 18,'MarkerFaceColor','r'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot((x1(tt)+x2(tt)), (y1(tt)+y2(tt)),'go','MarkerSize', 12,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    fanimator(@(tt) plot(0, 0,'ko','MarkerSize', 5,'MarkerFaceColor','g'), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    
+    % Add the timer
+    fanimator(@(tt) text(0,0.3,"Timer: "+ num2str(tt, 3)), 'AnimationRange', [0 T_sim],'FrameRate',Fps);
+    hold off;
+end
