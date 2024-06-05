@@ -2,6 +2,7 @@ clear all
 close all
 clc
 addpath('../functions/');
+addpath('../linear_system_matrices/');
 
 % Set Latex interpreter for plots
 set(groot,'defaulttextinterpreter','latex');  
@@ -292,102 +293,102 @@ MPC_data = struct('model', model_mpc, 'constraint', constraint, 'penalty', penal
 
 %% Start Regulation Simulation
 
-disp("MPC Regulation Started");
-for k = 1:1:size(T, 2)-1
-    t(k) = (k-1) * h;
-    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
-        fprintf('t = %d sec \n', floor(t(k)));
-    end
-
-    % Get the initial state from the non-linear dynamics last step state
-    model_mpc.x0 = x(:,k);
-    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model_mpc, constraint, penalty, ...
-                                             terminal, mpcmats);
-    if status ~= 1
-        disp("Error");
-        break;
-    end
-
-    % Get the first optimal control input from the MPC controller
-    usim(:,k) = uk(:,1);
-
-    % Optimal cost function value
-    V_N(k) = FVAL;
-
-    if sm_nl_sys == 1
-        % Simlulate the non-linear dynamics with the current control input for
-        % Ts time (ZOH operation)
-        tspan = [T(k), T(k+1)];
-        x(:,k+1) = NLSystemDynamics(model, x_eq, x(:,k), tspan, usim(:, k));
-    else
-        % Simlulate the linearized system
-        x(:,k+1) = A*x(:,k) + B*usim(:,k);
-    end
-
-    % Control Lyapunov function
-    V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
-
-    % Stage costs computed at different time steps
-    l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
-    l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
-end
-
-V_N_reg = V_N;
-V_f_reg = V_f;
-CLF_ineq_reg = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
-V_N_ineq_reg = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
-
-disp("MPC Regulation Finished.");
-
-% Display MPC Regulation plots
-
-figure;
-sgtitle("Regulation MPC vs Unconstrained LQR Response");
-subplot(5, 1, 1);
-hold on;
-grid on;
-hplots(1) = stairs(x(1,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_LQ(1:end-1,1), 'LineWidth', 1.5);
-ylabel('$\theta_{w}$');
-hold off;
-subplot(5, 1, 2);
-hold on;
-grid on;
-hplots(1) = stairs(x(2,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
-ylabel('$$\dot{\theta_{w}}$$');
-hold off;
-subplot(5, 1, 3);
-hold on;
-grid on;
-hplots(1) = stairs(x(3,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_LQ(1:end-1,3), 'LineWidth', 1.5);
-ylabel('$\theta_{p}$');
-hold off;
-subplot(5, 1, 4);
-hold on;
-grid on;
-hplots(1) = stairs(x(4,1:end-1), 'LineWidth', 1.5);
-hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
-ylabel('$$\dot{\theta_{p}}$$');
-hold off;
-subplot(5, 1, 5);
-hold on;
-grid on;
-hplots(1) = stairs(usim, 'LineWidth', 1.5);
-hplots(1) = stairs(u_LQ(1:end-1), 'LineWidth', 1.5);
-hold off;
-xlabel('Time Step $k$');
-ylabel('$u$');
-
-hL = legend({'MPC', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
-set(hL, 'Location', 'southoutside', 'Box', 'off');
-
-
-%%  Simulation of regulation
-
-% setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
-setupAnimation(1, x, x_eq, h, T_sim);
+% disp("MPC Regulation Started");
+% for k = 1:1:size(T, 2)-1
+%     t(k) = (k-1) * h;
+%     if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+%         fprintf('t = %d sec \n', floor(t(k)));
+%     end
+% 
+%     % Get the initial state from the non-linear dynamics last step state
+%     model_mpc.x0 = x(:,k);
+%     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model_mpc, constraint, penalty, ...
+%                                              terminal, mpcmats);
+%     if status ~= 1
+%         disp("Error");
+%         break;
+%     end
+% 
+%     % Get the first optimal control input from the MPC controller
+%     usim(:,k) = uk(:,1);
+% 
+%     % Optimal cost function value
+%     V_N(k) = FVAL;
+% 
+%     if sm_nl_sys == 1
+%         % Simlulate the non-linear dynamics with the current control input for
+%         % Ts time (ZOH operation)
+%         tspan = [T(k), T(k+1)];
+%         x(:,k+1) = NLSystemDynamics(model, x_eq, x(:,k), tspan, usim(:, k));
+%     else
+%         % Simlulate the linearized system
+%         x(:,k+1) = A*x(:,k) + B*usim(:,k);
+%     end
+% 
+%     % Control Lyapunov function
+%     V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
+% 
+%     % Stage costs computed at different time steps
+%     l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
+%     l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
+% end
+% 
+% V_N_reg = V_N;
+% V_f_reg = V_f;
+% CLF_ineq_reg = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
+% V_N_ineq_reg = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
+% 
+% disp("MPC Regulation Finished.");
+% 
+% % Display MPC Regulation plots
+% 
+% figure;
+% sgtitle("Regulation MPC vs Unconstrained LQR Response");
+% subplot(5, 1, 1);
+% hold on;
+% grid on;
+% hplots(1) = stairs(x(1,1:end-1), 'LineWidth', 1.5);
+% hplots(2) = stairs(x_LQ(1:end-1,1), 'LineWidth', 1.5);
+% ylabel('$\theta_{w}$');
+% hold off;
+% subplot(5, 1, 2);
+% hold on;
+% grid on;
+% hplots(1) = stairs(x(2,1:end-1), 'LineWidth', 1.5);
+% hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
+% ylabel('$$\dot{\theta_{w}}$$');
+% hold off;
+% subplot(5, 1, 3);
+% hold on;
+% grid on;
+% hplots(1) = stairs(x(3,1:end-1), 'LineWidth', 1.5);
+% hplots(2) = stairs(x_LQ(1:end-1,3), 'LineWidth', 1.5);
+% ylabel('$\theta_{p}$');
+% hold off;
+% subplot(5, 1, 4);
+% hold on;
+% grid on;
+% hplots(1) = stairs(x(4,1:end-1), 'LineWidth', 1.5);
+% hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
+% ylabel('$$\dot{\theta_{p}}$$');
+% hold off;
+% subplot(5, 1, 5);
+% hold on;
+% grid on;
+% hplots(1) = stairs(usim, 'LineWidth', 1.5);
+% hplots(1) = stairs(u_LQ(1:end-1), 'LineWidth', 1.5);
+% hold off;
+% xlabel('Time Step $k$');
+% ylabel('$u$');
+% 
+% hL = legend({'MPC', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+% set(hL, 'Location', 'southoutside', 'Box', 'off');
+% 
+% 
+% %%  Simulation of regulation
+% 
+% % setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
+% setupAnimation(1, x, x_eq, h, T_sim);
 
 %% Functions
 

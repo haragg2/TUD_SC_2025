@@ -48,18 +48,21 @@ end%function
 
 function [obj, feas] = solvelp_YALMIP(f, A, b)
 
-    options = sdpsettings('verbose',0,'solver','quadprog');
+%     options = sdpsettings('verbose',0,'solver','quadprog');
+      options = optimoptions("linprog", "Display","off");
     
-    x_ = sdpvar(length(f),1);                % define optimization variable
+%     x_ = sdpvar(length(f),1);                % define optimization variable
 
-    Constraint = [A*x_ <= b];                  %define constraints
+%     Constraint = [A*x_ <= b];                  %define constraints
 
-    Objective = f*x_;  %define cost function
+%     Objective = f*x_;  %define cost function
 
-    diagnostic = optimize(Constraint,Objective, options);  %solve the problem
-    x_=value(x_);                  %assign the solution to uopt
+    [x_, ~, feas] = linprog(f, A, b, [], [], [], [], options);
+
+%     diagnostic = optimize(Constraint,Objective, options);  %solve the problem
+%     x_=value(x_);                  %assign the solution to uopt
     obj = -f*x_;
-    feas = (diagnostic.problem == 0);
+%     feas = (diagnostic.problem == 0);
 
 end
 
