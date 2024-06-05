@@ -262,6 +262,7 @@ grid on;
 hL = legend(hplots, {'$x$', '$x^+ \in X_f$', '$x^+ \notin X_f$'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
 set(hL, 'Location', 'southoutside', 'Box', 'off');
 
+
 %% Regulation MPC
 
 model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
@@ -284,6 +285,12 @@ l_xu = zeros(size(T, 2)-1,1);
 l_xu0 = zeros(size(T, 2)-1,1);
 t = zeros(size(T, 2)-1,1);
 mpcmats = []; % Calculated first time and then reused
+
+%% for actual implementation on simulink
+
+MPC_data = struct('model', model_mpc, 'constraint', constraint, 'penalty', penalty, 'terminal', terminal, 'mpcmats', mpcmats);
+
+%% Start Regulation Simulation
 
 disp("MPC Regulation Started");
 for k = 1:1:size(T, 2)-1
