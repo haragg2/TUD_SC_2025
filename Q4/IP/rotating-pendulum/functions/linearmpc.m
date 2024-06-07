@@ -180,19 +180,19 @@ LB = -inf*ones(numVar,1);
 UB = inf*ones(numVar,1);
 
 % Decide terminal constraint.
-if isstruct(terminal) && all(isfield(terminal, {'A', 'b'}))
+% if isstruct(terminal) && all(isfield(terminal, {'A', 'b'}))
     Af = terminal.A;
     bf = terminal.b + Af*xr;
     bigAlt = [bigAlt; [zeros(size(Af, 1), numVar - numx), Af]];
     bigblt = [bigblt; bf];
-elseif isvector(terminal) && length(terminal) == numx
-    LB(end-numx+1:end) = terminal;
-    UB(end-numx+1:end) = terminal;
-elseif isempty(terminal)
-    % No terminal constraint. Pass
-else
-    error('Unknown input for terminal!');
-end
+% elseif isvector(terminal) && length(terminal) == numx
+%     LB(end-numx+1:end) = terminal;
+%     UB(end-numx+1:end) = terminal;
+% elseif isempty(terminal)
+%     % No terminal constraint. Pass
+% else
+%     error('Unknown input for terminal!');
+% end
 
 % Build struct with appropriate names.
 matrices = struct('H', bigH, 'f', bigf, 'Aeq', bigAeq, 'beq', bigbeq, ...

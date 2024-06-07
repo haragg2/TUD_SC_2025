@@ -265,8 +265,8 @@ set(hL, 'Location', 'southoutside', 'Box', 'off');
 
 
 %% Regulation MPC
-
-model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
+x0 = [0;  0; 0; 0];
+model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N, 'x0', x0);
 constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set

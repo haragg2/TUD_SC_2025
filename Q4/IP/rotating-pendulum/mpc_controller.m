@@ -1,32 +1,13 @@
-% clear all
 close all
-% clc
 addpath('functions/');
 addpath('linear_system_matrices/');
 
-% Set Latex interpreter for plots
-set(groot,'defaulttextinterpreter','latex');  
-set(groot, 'defaultAxesTickLabelInterpreter','latex');  
-set(groot, 'defaultLegendInterpreter','latex');
-
 %% Linearize the system
 
-% global MPC_data;
-
-% Linearization point
-theta1_eq = pi;
-theta2_eq = 0;
-
-x_eq = [theta1_eq; 0; theta2_eq; 0];
-
-sys_mat = load("LinearSys_0_0.mat");
+sys_mat = load("LinearSys_pi_0.mat");
 sys_ct = ss(sys_mat.sys_A, sys_mat.sys_B, [1, 0, 0, 0; 0, 0, 1, 0], []);
 
 %% Discretize the system
-
-h = 0.01;           % s; sampling time
-T_sim = 3;          % s; simulation time
-T = 0:h:T_sim;      % simulation time steps
 
 sys_dis = c2d(sys_ct, h);
 
@@ -38,12 +19,12 @@ D = sys_dis.D;
 
 %% Bounds
 
-xlb = [-0.3; -100; -0.4; -100];
+xlb = [-1.5; -100; -pi; -100];
 xub = -xlb;
 ulb = -1;
 uub = 1;
 
-N = 5; % Horizon
+N = 12; % Horizon
 
 % Defines the dimensions
 dim.nx = size(sys_dis.A, 1);        % Number of states
@@ -53,16 +34,27 @@ dim.ny = size(sys_dis.C, 1);        % Number of outputs
 %% LQR
 
 % Tuning weights
-Q = [40 0 0 0;
+Q = [100 0 0 0;
      0 10 0 0;
-     0 0 70 0;
+     0 0 40 0;
      0 0 0 10];
 
-R = 0.1;
+R = 2.5;
 
-% Find LQR gain matrix
-[K, P] = dlqr(A, B, Q, R);
-K = -K; % Sign convention
+for i=0.01:0.01:1.8
+    Q_lqi = blkdiag(Q, i*eye(2));
+    try
+        [K_lqr,~,~] = lqi(sys_dis,Q_lqi,R);
+    catch
+        i;
+    end
+end
+
+K = -K_lqr(1:4);
+
+% % Find LQR gain matrix
+% [K, P] = dlqr(A, B, Q, R);
+% K = -K; % Sign convention
 
 % Controllability check
 ctrb_sys = ctrb(A, B);
@@ -84,26 +76,6 @@ if isNoUnobservableModes == 0
     warning("Pair (A, Q') has some unobservable modes");
 end
 
-A_K = A + B * K;
-
-x0 = [0.15, 0, -0.1, 0]';       % initial condition for Xn
-u = zeros(size(T));                     % 0 input
-sysd_lqr = ss(A_K, [], C, D, h);       
-
-figure;
-grid on;
-lsim(sysd_lqr, u, T, x0);
-
-[~, t_LQ, x_LQ] = lsim(sysd_lqr, u, T, x0);
-u_LQ = K * x_LQ';
-
-figure;
-stairs(t_LQ, u_LQ);
-title('Control Input for LQ Control');
-xlabel('Time (seconds)');
-ylabel('Control Input');
-grid on;
-
 %% Compute X_f
 
 Xn = struct();
@@ -112,115 +84,160 @@ Z = struct();
 
 [Xn.('lqr'), V.('lqr'), Z.('lqr')] = findXn(A, B, K, N, xlb, xub, ulb, uub, 'lqr');
 
-%% Plot Xf and Xn
-Xf = Xn.lqr{1};
-X1 = Xn.lqr{floor(N/2)};
-X2 = Xn.lqr{N+1};
-
-% % Generate 500000 random points within the specified bounds
-% num_points = 500000;
-% x_samples = bsxfun(@plus, xlb, bsxfun(@times, rand(numel(xlb), num_points), (xub - xlb)));
-% % x_samples = [x_samples, [0.2654; -3.0552; -0.1543; 5.2605]];
-% 
-% % Check if Ax <= b is satisfied for each point
-% satisfied_points_Xf = all(Xf.A * x_samples <= Xf.b, 1);
-% satisfied_points_X1 = all(X1.A * x_samples <= X1.b, 1);
-% satisfied_points_X2 = all(X2.A * x_samples <= X2.b, 1);
-
-% % Plot the points that satisfy the condition on the 2D plane
-% figure;
-% sgtitle('Projection of points satisfying $X.A*x <= X.b$ on 2D plane');
-% hplots = gobjects(3, 1);
-% subplot(2, 2, 1);
-% hold on;
-% hplots(1) = plot(x_samples(1, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-% hplots(2) = plot(x_samples(1, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
-% hplots(3) = plot(x_samples(1, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
-% hold off;
-% xlabel('$\theta_{1}$');
-% ylabel('$\theta_{2}$');
-% grid on;
-% 
-% subplot(2, 2, 2);
-% hold on;
-% hplots(1) = plot(x_samples(2, satisfied_points_X2), x_samples(3, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-% hplots(2) = plot(x_samples(2, satisfied_points_X1), x_samples(3, satisfied_points_X1), 'go', 'MarkerSize', 3);
-% hplots(3) = plot(x_samples(2, satisfied_points_Xf), x_samples(3, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
-% hold off;
-% xlabel('$$\dot{\theta_{1}}$$');
-% ylabel('$$\theta_{2}$$');
-% grid on;
-% 
-% subplot(2, 2, 3);
-% hold on;
-% hplots(1) = plot(x_samples(4, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-% hplots(2) = plot(x_samples(4, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
-% hplots(3) = plot(x_samples(4, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
-% hold off;
-% xlabel('$$\dot{\theta_{2}}$$');
-% ylabel('$\theta_{1}$');
-% grid on;
-% 
-% subplot(2, 2, 4);
-% hold on;
-% hplots(1) = plot(x_samples(2, satisfied_points_X2), x_samples(1, satisfied_points_X2), 'ro', 'MarkerSize', 3);
-% hplots(2) = plot(x_samples(2, satisfied_points_X1), x_samples(1, satisfied_points_X1), 'go', 'MarkerSize', 3);
-% hplots(3) = plot(x_samples(2, satisfied_points_Xf), x_samples(1, satisfied_points_Xf), 'bo', 'MarkerSize', 3);
-% hold off;
-% xlabel('$$\dot{\theta_{1}}$$');
-% ylabel('$\theta_{1}$');
-% grid on;
-% hL = legend(hplots, {'$X_{15}$', '$X_{7}$', '$X_f$'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
-% 
-% % Set the location of the legend to 'southoutside' which positions
-% % it below the subplots and centers it.
-% set(hL, 'Location', 'southoutside', 'Box', 'off');
-
 %% Regulation MPC
 
+xr = [0; 0; 0; 0];
 model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
 constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
-% x0 = [0.25, 0, -0.1, 0]';  % initial condition for XN
-x0 = [0.2654; -3.0552; -0.1543; 5.2605];
-xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
-ref = [repmat([xr;0],N,1); xr];
+model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
 
-x = zeros(dim.nx, size(T, 2));
-x(:,1) = x0;
+%% Reference Tracking
+% x_ref = pi/6;
+% yref = [-x_ref; x_ref];
+% d_hat = 0;
+% 
+% 
+% xr = targetSelector(model_mpc, Z.lqr, dim, d_hat, yref);
+% model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
 
-usim = zeros(dim.nu, size(T, 2)-1);
-V_N = zeros(size(T, 2)-1,1);
-V_f = zeros(size(T, 2)-1,1);
-l_xu = zeros(size(T, 2)-1,1);
-l_xu0 = zeros(size(T, 2)-1,1);
-t = zeros(size(T, 2)-1,1);
-mpcmats = []; % Calculated first time and then reused
+%% 
 
-%% for actual implementation on simulink
 
-MPC_data = struct('model', model_mpc, 'constraint', constraint, 'penalty', penalty, 'terminal', terminal, 'mpcmats', mpcmats);
-save('MPC_DATA.mat', "MPC_data");
+
 %% Functions
 
-% function [xr, ur] = targetSelector(LTI, Z, dim, d_hat, yref)
-% 
-%     eqconstraints.A = [eye(dim.nx) - LTI.A, -LTI.B; LTI.C, zeros(size(LTI.C, 1), dim.nu)];
-%     eqconstraints.b = [LTI.Bd * d_hat; yref - (LTI.Cd*d_hat)];
-% 
-%     ineqconstraints.A = [Z.('G'), Z.('H')];
-%     ineqconstraints.b = Z.('psi');
-% 
-%     H = blkdiag(zeros(dim.nx), eye(dim.nu));
-%     h = zeros(dim.nx+dim.nu, 1);
-% 
-%     options1 = optimoptions(@quadprog);
-%     options1.OptimalityTolerance=1e-20;
-%     options1.ConstraintTolerance=1.0000e-15;
-%     options1.Display='off';
-%     xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
-%     xr = xur(1:dim.nx);
+function xr = targetSelector(LTI, Z, dim, d_hat, yref)
+
+    eqconstraints.A = [eye(dim.nx) - LTI.A, -LTI.B; LTI.C, zeros(size(LTI.C, 1), dim.nu)];
+    eqconstraints.b = [LTI.Bd * d_hat; yref - (LTI.Cd*d_hat)];
+
+    ineqconstraints.A = [Z.('G'), Z.('H')];
+    ineqconstraints.b = Z.('psi');
+
+    H = blkdiag(zeros(dim.nx), eye(dim.nu));
+    h = zeros(dim.nx+dim.nu, 1);
+
+    options1 = optimoptions(@quadprog);
+    options1.OptimalityTolerance=1e-20;
+    options1.ConstraintTolerance=1.0000e-15;
+    options1.Display='off';
+    xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
+    xr = xur(1:dim.nx);
 %     ur = xur(dim.nx+1:end);
-% end
+end
+
+% ******************************************************************************
+% Helper function for building matrices.
+% ******************************************************************************
+
+function matrices = buildmatrices(xr,model, constraint, penalty, terminal)
+% matrices = buildmatrices(model, constraint, penalty, terminal)
+%
+% Returns the matrices struct used by the main function.
+
+N = model.N;
+A = model.A;
+
+if diff(size(A)) ~= 0
+    error('model.Ak must be a square matrix.');
+end
+numx = size(A,1); % Number of states.
+
+B = model.B;
+numu = size(B,2); % Number of inputs.
+
+if isfield(constraint,'G')
+    G = constraint.G;
+    H = constraint.H;
+    psi = constraint.psi;
+else
+    G = zeros(0, numx);
+
+    H = zeros(0, numu);
+    psi = zeros(0, 1);
+end
+
+% Penalty matrices.
+Q = penalty.Q;
+R = penalty.R;
+P = penalty.P;
+M = zeros(numx, numu);
+
+littleH = [Q, M; M', R];
+bigH = kron(eye(N),littleH);
+bigH = blkdiag(bigH, P); % Add final penalty matrix.
+
+bigf = zeros(size(bigH, 1), 1);
+
+% Structure of big A (both Aeq and Alt) is
+% +-                  -+
+% |  A1 A2  0  0  ...  |
+% |   0 A1 A2  0  ...  |
+% |   0  0 A1 A2  ...  |
+% |  ...         A2  0 |
+% |  ...         A1 A2 |
+% +-                  -+
+%
+% We construct it first as
+%
+% +-             -+
+% |  ... A1 A2  0 |
+% |  ...  0 A1 A2 |
+% |  ...  0  0 A1 | <= Note exta A1 that has to be removed.
+% +-             -+
+%
+% and then get rid of extra rows (for last A1) and columns (for
+% nonexistant variable u_N).
+
+% For Equalities:
+% A1 = [A, B], A2 = [-I, 0].
+littleAeq1 = [A, B];
+littleAeq2 = [-eye(size(A)), zeros(size(B))];
+
+bigAeq = kron(eye(N+1),littleAeq1) + kron(diag(ones(1,N),1),littleAeq2);
+
+bigAeq = bigAeq(1:end-numx,1:end-numu);
+    % Remove columns for u_N and for rows of x_N+1 = A x_N + B u_N
+
+bigbeq = zeros(numx*N,1);
+
+% For Inequalities:
+% A1 = [G, H], A2 = [0, 0].
+littleAlt1 = [G, H];
+littleAlt2 = [zeros(size(G)), zeros(size(H))];
+
+bigAlt = kron(eye(N+1),littleAlt1) + kron(diag(ones(1,N),1), ...
+    littleAlt2);
+bigAlt = bigAlt(1:end-size(littleAlt1,1),1:end-numu);
+    % Remove columns for u_N and for rows of G x_N + D u_N <= d.
+bigblt = repmat(psi, N, 1);
+
+% Variable bounds.
+numVar = length(bigf);
+LB = -inf*ones(numVar,1);
+UB = inf*ones(numVar,1);
+
+% Decide terminal constraint.
+if isstruct(terminal) && all(isfield(terminal, {'A', 'b'}))
+    Af = terminal.A;
+    bf = terminal.b + Af*xr;
+    bigAlt = [bigAlt; [zeros(size(Af, 1), numVar - numx), Af]];
+    bigblt = [bigblt; bf];
+elseif isvector(terminal) && length(terminal) == numx
+    LB(end-numx+1:end) = terminal;
+    UB(end-numx+1:end) = terminal;
+elseif isempty(terminal)
+    % No terminal constraint. Pass
+else
+    error('Unknown input for terminal!');
+end
+
+% Build struct with appropriate names.
+matrices = struct('H', bigH, 'f', bigf, 'Aeq', bigAeq, 'beq', bigbeq, ...
+                  'Alt', bigAlt, 'blt', bigblt, 'lb', LB, 'ub', UB);
+
+end%function
+

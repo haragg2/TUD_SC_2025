@@ -1,6 +1,6 @@
-close all;
-clear all;
-clc;
+% close all;
+% clear all;
+% clc;
 
 % Set Latex interpreter for plots
 set(groot,'defaulttextinterpreter','latex');  
