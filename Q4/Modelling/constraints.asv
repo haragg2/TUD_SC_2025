@@ -1,0 +1,183 @@
+% Constraints
+% Coefficients for x, v, delta1, delta2, delta3, delta4, delta5, delta6, z1, z2, p, q, u
+% Constants on the right-hand side of inequalities
+
+Np = 2;
+params.g = 9.8;
+params.m = 800;
+params.c = 0.4;
+params.b = 3600;
+params.umax = 1.6;
+params.umin = -1.4;
+params.acc_comf = 2.5;
+params.gamma = 1.8;
+params.vg = 16;
+params.h = 10;
+params.w = 50;
+params.vmax = 56;
+params.acc_max = 2.57;
+params.dec_max = -2.93;
+params.alpha = 27;
+params.beta = 340;
+xmax = 1e10;
+vref = 2;
+
+% Constraint 1
+A(1,:) = [1, 0, 0, xmax - 50, 0, 0, 0, 0, 0, 0, 0, 0, 0]; % x
+b(1) = -xmax;
+
+% Constraint 2
+A(2,:) = [-1, 0, 0, -(50 + eps(1)), 0, 0, 0, 0, 0, 0, 0, 0, 0]; % x, delta2
+b(2) = eps(1) + 50;
+
+% Constraint 3
+A(3,:) = [1, 0, 0, 0, xmax - 100, 0, 0, 0, 0, 0, 0, 0, 0]; % x
+b(3) = -xmax;
+
+% Constraint 4
+A(4,:) = [-1, 0, 0, 0, -(100 + eps(1)), 0, 0, 0, 0, 0, 0, 0, 0]; % x, delta3
+b(4) = eps(1) + 100;
+
+% Constraint 5
+A(5,:) = [1, 0, 0, 0, 0, xmax - 200, 0, 0, 0, 0, 0, 0, 0]; % x
+b(5) = -xmax;
+
+% Constraint 6
+A(6,:) = [-1, 0, 0, 0, 0, -(200 + eps(1)), 0, 0, 0, 0, 0, 0, 0]; % x, delta3
+b(6) = eps(1) + 200;
+
+% Constraint 7
+A(7,:) = [-1, 0, 0, 0, 0, 0, 200, 0, 0, 0, 0, 0, 0]; % x, delta5
+b(7) =eps(1);
+
+% Constraint 8
+A(8,:) = [1, 0, 0, 0, 0, 0, 200 - xmax - eps(1), 0, 0, 0, 0, 0, 0]; % x, delta5
+b(8) = eps(1) - 200;
+
+% Constraint 9
+A(9,:) = [0, 1, params.vmax - params.vg + eps(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; % v, delta1
+b(9) = - params.vmax;
+
+% Constraint 10
+A(10,:) = [0, -1, -params.vg, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; % v, delta1
+b(10) = params.vg;
+
+% Constraint 11
+A(11,:) = [0, 1, 0, 0, 0, 0, 0, params.vmax - params.alpha, 0, 0, 0, 0, 0]; % v, delta6
+b(11) = -params.vmax;
+
+% Constraint 12
+A(12,:) = [0, -1, 0, 0, 0, 0, 0, -params.alpha - eps(1), 0, 0, 0, 0, 0]; % v, delta6
+b(12) = eps(1) + params.alpha;
+
+% Constraint 13
+A(13,:) = [0, 0, -params.umax, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]; % z1, delta1
+b(13) = 0;
+
+% Constraint 14
+A(14,:) = [0, 0, params.umin, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0]; % z1, delta1
+b(14) = 0;
+
+% Constraint 15
+A(15,:) = [0, 0, -params.umin, 0, 0, 0, 0, 0, 1, 0, 0, 0, -1]; % z1, delta1
+b(15) = params.umin;
+
+% Constraint 16
+A(16,:) = [0, 0, params.umax, 0, 0, 0, 0, 0, -1, 0, 0, 0, 1]; % z1, delta1
+b(16) = -params.umax;
+
+% Constraint 17
+A(17,:) = [0, 0, 0, 0, 0, 0, 0, -params.vmax, 0, 1, 0, 0, 0]; % z2
+b(17) = 0;
+
+% Constraint 18
+A(18,:) = [0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0]; % z2
+b(18) = 0;
+
+% Constraint 19
+A(19,:) = [0, -1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]; % v
+b(19) = 0;
+
+% Constraint 20
+A(20,:) = [0, 1, 0, 0, 0, 0, 0, params.vmax, 0, -1, 0, 0, 0];
+b(20) = -params.vmax;
+
+% Constraint 21
+A(21,:) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+b(21) = -params.umax;
+
+% Constraint 22
+A(22,:) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1];
+b(22) = params.umin;
+
+% Constraint 23
+A(23,:) = [0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+b(23) = 0;
+
+% Constraint 24
+A(24,:) = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+b(24) = -params.vmax;
+
+% Constraint 25
+A(25,:) = [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+b(25) = 0;
+
+% Constraint 26
+A(26,:) = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+b(26) = -xmax;
+
+% Constraint 27
+A(27,:) = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0];
+b(27) = -vref;
+
+% Constraint 28
+A(28,:) =  [0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0];
+b(28) = vref;
+
+% % Constraint 29
+% A(29,:) = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1];
+b(29) = -Ts*(params.acc_comf);
+% 
+% % Constraint 30
+% A(30,:) = [0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+% b(30) = -Ts*(params.acc_comf);
+% 
+% % Constraint 31
+% A(31,:) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, -1, 0];
+% b(31) = -p;
+% 
+% % Constraint 32
+% A(32,:) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1, 0];
+% b(32) = -p;
+
+
+I_delta = [A(1:28, 3:8); zeros(4, 6)];
+I_z = [A(1:28, 9:10); zeros(4, 2)];
+I_p = [A(1:28, 11); zeros(4, 1)];
+I_q = [A(1:28, 12); zeros(4, 1)];
+
+I_delta = kron(eye(Np), I_delta);
+I_z = kron(eye(Np), I_z);
+I_p = kron(eye(Np), I_p);
+I_q = kron(eye(Np), I_q);
+
+I_x1 = [A(1:28, 1:2); [0, 1; 0, -1]; zeros(2, 2)];
+I_x2 = [zeros(28, 2); [0, -1; 0, 1]; zeros(2, 2)];
+I_x3 = [A(1:28, 1:2); zeros(4, 2)];
+
+I_x2 = kron(eye(Np+2), I_x2);
+I_x2 = I_x2(1:end-32, 3:end);
+I_x = blkdiag(I_x3, kron(eye(Np), I_x1)) + I_x2;
+
+I_u1 = [A(1:28, 13); zeros(2, 1); 1; 0];
+
+I_u2 = [zeros(30, 1); -1; 0];
+I_u2 = kron(eye(Np+1), I_u2);
+I_u2 = I_u2(1:end-32, 2:end);
+
+I_u = kron(eye(Np), I_u1) + I_u2;
+
+
+
+
+

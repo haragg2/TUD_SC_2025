@@ -152,7 +152,6 @@ ylabel('Slope (rad)');
 title('Road Slope over Position');
 grid on;
 
-
 v_init = 20;
 x_init = 0.1;
 X0 = [x_init; v_init];
@@ -192,7 +191,80 @@ grid on;
 % hold off;
 % grid on;
 
-%%
+%% 2.5
+
+%% 2.6 
+
+params.r1 = params.b / (params.m * (1 + params.gamma));
+params.r2 = params.b / (params.m * (1 + 2 * params.gamma));
+params.Ps = (params.c * params.vmax^2 - params.beta) / (params.vmax - params.alpha);
+
+slopes = [((2 * params.h) / params.w), (((params.h) / params.w)), 0, ((-3 * params.h) / (2 * params.w))];
+params.theta1 = (2 * params.h) / params.w;
+params.theta2 = params.h / params.w;
+params.theta3 = 0;
+params.theta4 = (-3 * params.h) / (2 * params.w);
+
+Ts = 0.1;
+Np = 5; % Prediction Horizon
+Nc = 4; % Control Horizon
+lambda = 0.1;
+xmax = 1e10*ones(Np,1);
+vref = zeros(Np,1);
+q = zeros(Np,1); % |v(k) - vref(k)|
+p = zeros(Np,1); % |u(k) - u(k-1)|
+delta = zeros(Np,6); % binary variables
+z = zeros(Np,2); % real variables
+u = zeros(Np,1); % real variable
+
+% Cost Function
+J = ones(1,Nc) * q + lambda * ones(1,Nc) * p;
+
+[X_Np] = predmodgen(X0, u, z, delta, params, Np, Ts); % X_Np = [x;v] (dynamic constraints)
+
+% Equality Constraints
+X == X_Np;
+delta(:,2) + delta(:,3) + delta(:,4) + delta(:,5) == 1;
+
+% Inequality Constraints 
+X(:,1) - 50 - (xmax - 50) * (1 - delta(:,2)) <= 0;
+eps(1) - (50 + eps(1)) * delta(:,2) - X(:,1) + 50 <= 0;
+X(:,1) - 100 - (xmax - 100) * (1 - delta(:,3)) <= 0;
+eps(1) - (100 + eps(1)) * delta(:,3) - X(:,1) + 100 <= 0;
+X(:,1) - 200 - (xmax - 200) * (1 - delta(:,4)) <= 0;
+eps(1) - (200 + eps(1)) * delta(:,4) - X(:,1) + 200 <= 0;
+200 - X(:,1) + eps(1) - 200 * (1 - delta(:,5)) <= 0;
+eps(1) + (200 - xmax - eps(1)) * delta(:,5) + X(:,1) - 200 <= 0;
+
+X(:,2) - params.vg + eps(1) - (params.vmax - params.vg + eps(1)) * (1 - delta(:,1)) <= 0;
+params.vg - X(:,2) - params.vg * delta(:,1) <= 0;
+X(:,2) - params.alpha - (params.vmax - params.alpha) * (1 - delta(:,6)) <= 0;
+eps(1) - (params.alpha + eps(1)) * delta(:,6) - X(:,2) + params.alpha <= 0;
+
+z(:,1) - umax * delta(:,1) <= 0;
+umin * delta(:,1) - z(:,1) <= 0;
+z(:,1) - u + umin * (1 - delta(:,1)) <= 0;
+u - umax * (1 - delta(:,1)) - z(:,1) <= 0;
+z(:,2) - params.vmax * delta(:,6) <= 0;
+- z(:,2) <= 0;
+z(:,2) - X(:,2) <= 0;
+X(:,2) - params.vmax * (1 - delta(:,6)) - z(:,2) <= 0;
+
+u - umax <= 0;
+umin - u <= 0;
+-X(:,2) <= 0;
+X(:,2) - params.vmax <= 0;
+-X(:,1) <= 0;
+X(:,1) - xmax <= 0;
+X(2:end,2) - X(1:end-1,2) - Ts*(params.acc_comf) <= 0;
+-X(2:end,2) + X(1:end-1,2) - Ts*(params.acc_comf) <= 0;
+
+X(:,2) - vref - q <= 0;
+-X(:,2) + vref - q <= 0;
+u(2:end,2) - u(1:end-1,2) - p <= 0;
+-u(2:end,2) + u(1:end-1,2) - p <= 0;
+u(1) - p <= 0;
+-u(1) - p <= 0;
 
 %% Function 
 
@@ -248,65 +320,22 @@ function [dx] = pwa_model(t, x, params, u)
     dx = [vel; acc];
 end
 
-% % Function to solve the ODE and capture theta
-% function dYdt = odefun(t, Y)
-%     u = sin(t);  % Example control input, replace with appropriate function
-%     [dx, theta] = pwa_model(t, Y, params, u);
-%     theta_values = [theta_values; theta];  % Store theta at each step
-%     dYdt = dx;
-% end
+function [X_Np] = predmodgen(X0, u, z, delta, params, Np, Ts)
+    % X0 (initial states) = 1x2 (x0, v0)
+    % size(u) = Npx1
+    % size(z) = Npx2
+    % size(delta) = Npx6
+    % size(X_Np) = Npx2
 
+    X_Np = zeros(Np,2);
+    X_Np(1,:) = X0;
 
-% % Define symbolic variables
-% syms x(t) v(t) u(t) r
-% 
-% theta = 0;
-% 
-% % Define the differential equations
-% ode1 = diff(x, t) == v;
-% ode2 = diff(v, t) == ((b/m) * u(t)) / (1 + gamma * r) - (g * sin(theta) * x(t)) - (c/m) * v^2;
-% 
-% % Convert the system of ODEs to MATLAB function handle
-% odes = [ode1; ode2];
-% [V, S] = odeToVectorField(odes);
-% 
-% 
-% MF = matlabFunction(V, 'vars', {'t', 'Y', 'u', 'r'});
-% 
-% h = 0.1;
-% tsim = 0:h:10;
-% usim = sin(tsim);
-% % r_sim = ones(size(tsim));  % Example r(t) function
-% v_init = 0;
-% r = 1;
-% X0 = [0; v_init];
-% 
-% % Loop through the simulation time
-% for i = 1:length(tsim)-1
-%     tspan = [tsim(i), tsim(i+1)];
-%     u = usim(i);
-% 
-%     % Define options for ODE solver with events
-%     options = odeset('Events', @(t, x) event_function(t, x, vg));
-%     % Solve the ODEs
-%     [t, X, te, xe, ie] = ode45(@(t, Y) MF(t, Y, u, r), tspan, X0, options);
-% 
-%     if ~isempty(te)
-%         switch ie(end)  % Handle the last event
-%             case 1
-%                 disp('Event: v > vg');
-%             case 2
-%                 disp('Event: v <= vg');
-%         end
-%     end
-% 
-%     % Update the initial condition for the next step
-%     X0 = X(end, :);
-% end
-% 
-% function [value, isterminal, direction] = event_function(t, x, vg)
-%     % Define event conditions
-%     value = [x(2) - vg, x(2) - vg];  % Detect when v > vg and v <= vg
-%     isterminal = [1, 1];  % Stop the integration
-%     direction = [1, -1];  % Detect both increasing and decreasing
-% end
+    for i = 1:Np
+        X_Np(i+1,1) = X_Np(i,1) + Ts * X_Np(i,2);
+        X_Np(i+1,2) = X_Np(i,2) + Ts* ((params.r1 - params.r2) * z(i,1) ...
+                    + params.r2 * u - (1 / params.m) * ((z(i,2) * (params.beta / params.alpha) - params.Ps) ...
+                    + params.Ps * (X_Np(i,2) - params.alpha) + params.beta + delta(i,6) * (params.Ps * params.alpha - params.beta)) ...
+                    - params.g * (delta(i,2) * params.theta1 + delta(i,3) * params.theta2 + delta(i,5) * params.theta4));
+    end
+
+end
