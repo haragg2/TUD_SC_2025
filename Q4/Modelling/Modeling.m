@@ -8,15 +8,35 @@ set(groot, 'defaultAxesTickLabelInterpreter','latex');
 set(groot, 'defaultLegendInterpreter','latex');
 
 %%
-syms m c v vmax alpha beta
+
+% Parameters
+params.g = 9.8;
+params.m = 800;
+params.c = 0.4;
+params.b = 3600;
+params.umax = 1.6;
+params.umin = -1.4;
+params.acc_comf = 2.5;
+params.gamma = 1.8;
+params.vg = 16;
+params.h = 10;
+params.w = 50;
+
+
+params.Ts = 0.1;
+
+% gear ratio
+r = 1;
+
+syms v vmax alpha beta
 
 p1 = (beta/alpha)*v;
-p2 = ((c*vmax^2-beta) / (vmax-alpha))*(v - alpha) + beta;
+p2 = ((params.c*vmax^2-beta) / (vmax-alpha))*(v - alpha) + beta;
 
-a1_int = @(v) (c * v^2 - p1)^2;
+a1_int = @(v) (params.c * v^2 - p1)^2;
 a1 =  simplify(int(a1_int, v, 0, alpha));
 
-a2_int = @(v) (c * v^2 - p2)^2;
+a2_int = @(v) (params.c * v^2 - p2)^2;
 a2 = simplify(int(a2_int, v, alpha, vmax));
 
 pa = a1+a2;
@@ -29,23 +49,16 @@ solutions = solve([dp_alpha == 0, dp_beta == 0], [alpha, beta]);
 alpha_sol = solutions.alpha;
 beta_sol = solutions.beta;
 
-% Parameters
-g = 9.8;
-m = 800;
-c = 0.4;
-b = 3600;
-umax = 1.6;
-umin = -1.4;
-acc_comf = 2.5;
-gamma = 1.8;
-vg = 16;
-h = 10;
-w = 50;
+
 
 %% 2.1
-vmax = sqrt((b*umax)/(c*(1 + gamma*2)));
-acc_max = ((b/m)*umax)/(1 + gamma);
-dec_max = ((b/m)*umin)/(1 + gamma*2) - c*vmax^2/m;
+vmax = sqrt((params.b * params.umax)/(params.c * (1 + params.gamma * 2)));
+acc_max = ((params.b / params.m) * params.umax)/(1 + params.gamma);
+dec_max = ((params.b / params.m) * params.umin)/(1 + params.gamma * 2) - params.c * vmax^2/ params.m;
+
+params.vmax = vmax;
+params.acc_max = acc_max;
+params.dec_max = dec_max;
 
 %% 2.2
 alpha_val = eval(subs(alpha_sol));
@@ -54,28 +67,13 @@ beta_val = eval(subs(beta_sol));
 idx = alpha_val > 0 & alpha_val < vmax;
 alpha_val = alpha_val(idx);
 beta_val = beta_val(idx);
-%% 2.3
 
-params.g = 9.8;
-params.m = 800;
-params.c = 0.4;
-params.b = 3600;
-params.umax = 1.6;
-params.umin = -1.4;
-params.acc_comf = 2.5;
-params.gamma = 1.8;
-params.vg = 16;
-params.h = 10;
-params.w = 50;
-params.vmax = vmax;
-params.acc_max = acc_max;
-params.dec_max = dec_max;
 params.alpha = alpha_val;
 params.beta = beta_val;
-params.Ts = 0.1;
 
-% gear ratio
-r = 1;
+%% 2.3
+
+
 
 %%
 
@@ -85,7 +83,7 @@ theta = 0;
 
 % Define the differential equations
 ode1 = diff(x, t) == v;
-ode2 = diff(v, t) == ((b/m) * u) / (1 + gamma * r) - (g * sin(theta) * x(t)) - (c/m) * v^2;
+ode2 = diff(v, t) == ((params.b/params.m) * u) / (1 + params.gamma * r) - (params.g * sin(theta) * x(t)) - (params.c / params.m) * v^2;
 
 % Convert the system of ODEs to MATLAB function handle
 odes = [ode2; ode1];
@@ -93,14 +91,15 @@ odes = [ode2; ode1];
 
 MF = matlabFunction(V, 'vars', {'t', 'Y', 'u'});
 
-tsim = 0:h:50;
+T_end = 50;
+T = 0:params.Ts:T_end;
 v_init = 30;
-X0 = [0.1; v_init];
-tspan = [tsim(1) tsim(end)];
+x0 = [0.1; v_init];
+tspan = [T(1) T(end)];
 
 % Solve the ODEs
-[t_og, X_og] = ode45(@(t, Y) MF(t, Y, sin(t)), tspan, X0);
-[t_pwa, X_pwa] = ode45(@(t, Y) pwa_friction(t, Y, params, r, theta, sin(t)), tspan, X0);
+[t_og, X_og] = ode45(@(t, Y) MF(t, Y, sin(t)), tspan, x0);
+[t_pwa, X_pwa] = ode45(@(t, Y) pwa_friction(t, Y, params, r, theta, sin(t)), tspan, x0);
 
 figure;
 sgtitle("Friction Force Comparison");
@@ -109,8 +108,8 @@ subplot(2, 1, 1);
 hold on;
 plot(t_og, X_og(:, 2), LineWidth=1.2);
 plot(t_og, X_pwa(:, 2), LineWidth=1.2);
-xlabel('Time (s)');
-ylabel('Velocity (m/s)');
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
 title('Velocity of the follower car over time');
 hold off;
 grid on;
@@ -120,8 +119,8 @@ subplot(2, 1, 2);
 hold on;
 plot(t_og, X_og(:, 1), LineWidth=1.2);
 plot(t_og, X_pwa(:, 1), LineWidth=1.2);
-xlabel('Time (s)');
-ylabel('Position (m)');
+xlabel('Time ($s$)');
+ylabel('Position ($m$)');
 title('Position of the follower car over time');
 hold off;
 grid on;
@@ -132,69 +131,112 @@ legend("Original", "PWA",'Location','southoutside', 'Orientation','horizontal', 
 
 % Initialize x_init
 x_road = 1:5000;
+slopes = [((2 * params.h) / params.w); (params.h / params.w); 0; ((-3 * params.h) / (2 * params.w))];
+
 road_height = @(pos) min([((2 * params.h * pos) / params.w); (((params.h * pos) / params.w) + params.h); ...
     (3 * params.h * ones(size(pos))); (((-3 * params.h * pos) / (2 * params.w)) + 9 * params.h)]);
 
 y_road = road_height(x_road);
+
 % Plot the result for visualization
 figure;
 sgtitle("Road Profile");
 subplot(2, 1, 1);
 plot(x_road, y_road, LineWidth=1.2);
-xlabel('Position');
-ylabel('Height (m)');
+xlabel('Position ($m$)');
+ylabel('Height ($m$)');
 title('Road Height over Position');
 grid on;
 
 subplot(2, 1, 2);
-plot(x_road, asin(y_road./x_road), LineWidth=1.2);
-xlabel('Position');
+plot(x_road(2:end), asin((y_road(2:end) - y_road(1:end-1)) ./ (x_road(2:end) - x_road(1:end-1))), LineWidth=1.2);
+xlabel('Position ($m$)');
 ylabel('Slope (rad)');
 title('Road Slope over Position');
 grid on;
 
 v_init = 40;
-x_init = 0.01;
-X0 = [x_init; v_init];
+x_init = 10;
+x0 = [x_init; v_init];
+T_end = 50;
 
-tspan = [tsim(1) 50];
-[t_model, X_model] = ode45(@(t, Y) pwa_model(t, Y, params, sin(t)), tspan, X0);
-theta_prof = asin(road_height(X_model(:, 1)')./X_model(:, 1)');
+tspan = [T(1) T_end];
+[t_pwa, x_pwa_cont] = ode45(@(t, Y) pwa_model(t, Y, params, 0.8 * cos(t)), tspan, x0);
+[t_nl, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, 0.8 * cos(t), params), tspan, x0);
+theta_prof = asin(road_height(x_pwa_cont(:, 1)')./x_pwa_cont(:, 1)');
 
 figure;
-sgtitle("Theta Calculation");
-% Subplot 1: Velocity of follower car
-subplot(3, 1, 1);
+sgtitle("PWA Model Simulation");
+subplot(2, 1, 1);
 hold on;
-plot(t_model, X_model(:, 2), LineWidth=1.2);
-xlabel('Time (s)');
-ylabel('Velocity (m/s)');
-title('Velocity of the follower car over time');
+plot(t_pwa, x_pwa_cont(:, 1), LineWidth=1.2);
+plot(t_nl, x_nl(:, 1), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Position ($m$)');
+title('Position over time');
 hold off;
 grid on;
 
-% Subplot 2: Position of follower car
-subplot(3, 1, 2);
+subplot(2, 1, 2);
 hold on;
-plot(t_model, X_model(:, 1), LineWidth=1.2);
-xlabel('Time (s)');
-ylabel('Position (m)');
-title('Position of the follower car over time');
+plot(t_pwa, x_pwa_cont(:, 2), LineWidth=1.2);
+plot(t_nl, x_nl(:, 2), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+title('Velocity over time');
 hold off;
 grid on;
+legend("PWA Model", "NL Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
 
-% subplot(3, 1, 3);
-% hold on;
-% stairs(t_model, theta_prof, LineWidth=1.2);
-% xlabel('Time (s)');
-% ylabel('Theta (rad)');
-% title('Road Profile');
-% hold off;
-% grid on;
+figure;
+theta_pwa = zeros(length(x_pwa_cont(:, 1)), 1);
+for k=1:1:length(theta_pwa)
+    pos = x_pwa_cont(k, 1);
+    [y, idx] = min([((2 * params.h * pos) / params.w), (((params.h * pos) / params.w) + params.h), (3 * params.h), (((-3 * params.h * pos) / (2 * params.w)) + 9 * params.h)]);
+    theta_pwa(k) = slopes(idx);
+end
+plot(t_pwa, theta_pwa, LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Theta (rad)');
+title('Road Profile ($\theta$)');
+grid on;
+
 
 
 %% 2.5
 
+% Initial condition same as 2.4
+
+x_pwa_dis = zeros(length(T), 2);
+x_pwa_dis(1, :) = x0;
+
+for k=1:1:length(T)-1
+    u = 0.8 * cos(k * params.Ts);
+    dx = pwa_model(k, x_pwa_dis(k, :), params, u);
+
+    x_pwa_dis(k+1, :) = (x_pwa_dis(k, :)' + dx * params.Ts)';
+end
+
+figure;
+sgtitle("Forward Euler Discretization of PWA model");
+subplot(2, 1, 1);
+hold on;
+plot(T, x_pwa_dis(:, 1), LineWidth=1.2);
+plot(t_pwa, x_pwa_cont(:, 1), LineWidth=1.2);
+hold off;
+xlabel('Time ($s$)');
+ylabel('Position ($m$)');
+grid on;
+
+subplot(2, 1, 2);
+hold on;
+plot(T, x_pwa_dis(:, 2), LineWidth=1.2);
+plot(t_pwa, x_pwa_cont(:, 2), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+hold off;
+grid on;
+legend("PWA Model", "NL Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
 
 
 %% 2.6
@@ -294,7 +336,7 @@ sgtitle("MPC Input Sequence for arbitrary step $k$");
 subplot(2, 1, 1);
 hold on;
 plot(T(1:dim.Np), optimal_control, LineWidth=1.2);
-xlabel('Time (s)');
+xlabel('Time ($s$)');
 ylabel('Throttle Input');
 legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 % legendu1 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
@@ -307,8 +349,8 @@ hold on;
 plot(T(1:dim.Np), x_val_Np(:, 2), LineWidth=1.2);
 % plot(T(1:dim.Np), vref(1:dim.Np), '--', LineWidth=1.2);
 hold off;
-xlabel('Time (s)');
-ylabel('Velocity (m/s)');
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
 legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 % legendv1 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 legend(legendv,'Reference Velocity');
@@ -325,7 +367,7 @@ T_end = 50;
 T = 0:params.Ts:T_end;
 
 % Initial condition
-x0 = [100; 40];
+x0 = [0.1; 40];
 
 % Update max distance
 params.xmax = x0(1) + params.vmax * T_end;
@@ -335,7 +377,7 @@ T_ref = [T, T_end:params.Ts:(T_end+dim.Np)/params.Ts];
 vref = 39*ones(length(T_ref), 1);
 
 % Update lambda for the objective computation
-params.lambda = 0.01;
+params.lambda = 0.0001;
 
 % Get the objective function and prediction matrices
 [pred, obj] = build_obj(params, dim);
@@ -365,7 +407,7 @@ for k = 1:1:size(T, 2)-1
         p = output((dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq + dim.np)*dim.Np); 
 
         [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u(1), params), tspan, x0);
-        x0 = x_nl(end, :)'
+        x0 = x_nl(end, :)';
 
         u_prev = u(1);
     else
@@ -378,12 +420,13 @@ for k = 1:1:size(T, 2)-1
 
 end
 
-figure(11);
+% Figures
+figure;
 sgtitle("MPC Input Sequence for arbitrary step $k$");
 subplot(2, 1, 1);
 hold on;
 plot(T(1:end-1), optimal_control, LineWidth=1.2);
-xlabel('Time (s)');
+xlabel('Time ($s$)');
 ylabel('Throttle Input');
 legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 legend(legendu);
@@ -394,8 +437,8 @@ hold on;
 plot(T, x_val(:, 2), LineWidth=1.2);
 plot(T, vref(1:length(T)), '--', LineWidth=1.2);
 hold off;
-xlabel('Time (s)');
-ylabel('Velocity (m/s)');
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
 legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 legend(legendv,'Reference Velocity');
 
@@ -411,17 +454,17 @@ vref = build_vref(T_ref, params);
 vref = vref';
 
 % Initial condition
-x0 = [51; 0.925*params.alpha];
+x0 = [101; 0.925*params.alpha];
 
 % Update Prediction and Control Horizon
-dim.Np = 5;
-dim.Nc = 4;
+dim.Np = 10;
+dim.Nc = 8;
 
 % Update max distance using initial condition and vmax
 params.xmax = x0(1) + params.vmax * T_end;
 
 % Update lambda for the objective computation
-params.lambda = 0.001;
+params.lambda = 0.1;
 
 % Get the objective function and prediction matrices
 [pred, obj] = build_obj(params, dim);
@@ -432,6 +475,8 @@ A = (obj.A_ineq + obj.I_x * pred.Bp);
 u_prev = 0;
 x_val = zeros(size(T, 2), dim.nx);
 x_val(1, :) = x0';
+
+optimal_control = zeros(length(T)-1, 1);
 
 for k = 1:1:size(T, 2)-1
     tspan = [T(k) T(k+1)];
@@ -447,8 +492,7 @@ for k = 1:1:size(T, 2)-1
         u = output((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
         q = output((dim.nz + dim.nd + dim.nu)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np); 
         p = output((dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq + dim.np)*dim.Np); 
-    
-        % x1_Np = Ap * x0 + Bp * [z; delta; u; q; p] + fp;
+
         [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u(1), params), tspan, x0);
         x0 = x_nl(end, :)';
 
@@ -457,12 +501,66 @@ for k = 1:1:size(T, 2)-1
         [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u_prev, params), tspan, x0);
         x0 = x_nl(end, :)';
     end
+
+    optimal_control(k, :) = u_prev;
     x_val(k+1, :) = x0;
 
 end
 
+% Figures
 figure;
-plot(T, x_val(:, 2));
+gTitle = sprintf('Closed-loop States Evolution with $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+sgtitle(gTitle);
+subplot(3, 1, 1);
+plot(x_val(:, 1), x_val(:, 2), LineWidth=1.2);
+xlabel('Position ($m$)');
+ylabel('Velocity ($m/s$)');
+title("State Evolution");
+grid on;
+subplot(3, 1, 2);
+plot(T, x_val(:, 1), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Position ($m$)');
+title("Position over Time");
+grid on;
+subplot(3, 1, 3);
+plot(T, x_val(:, 2), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+title("Velocity over Time");
+grid on;
+
+figure;
+gTitle = sprintf('Closed-loop Response with $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+sgtitle(gTitle);
+subplot(4, 1, 1);
+plot(T(1:end-1), optimal_control, LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Throttle Input');
+title("Throttle Input over Time");
+grid on;
+subplot(4, 1, 2);
+plot(T(2:end-1), optimal_control(2:end) - optimal_control(1:end-1), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Throttle Input');
+title("Throttle Input Change over Time");
+grid on;
+subplot(4, 1, 3);
+hold on;
+plot(T, x_val(:, 2) - vref(1:length(T)), LineWidth=1.2);
+plot(T, vref(1:length(T)), '--', LineWidth=1.2);
+hold off;
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+legend("$v - v_{ref}$", "$v_{ref}$");
+title("Velocities over Time");
+grid on;
+subplot(4, 1, 4);
+plot(T(2:end), (x_val(2:end, 2) - x_val(1:end-1, 2))/params.Ts, LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Acceleration ($m/s^2$)');
+title("Acceleration over Time");
+grid on;
 
 %% Function
 
@@ -480,8 +578,8 @@ function dx = NL_Dynamics(t, x, u, params)
     elseif vel >= params.vg && vel <= params.vmax
         r = 2;
     else
+        r = 2;
         disp('NL_Dy ERROR: Vel exceeded max');
-        return;
     end
 
     v_dot = ((params.b / params.m) * u) / (1 + params.gamma * r) - (params.g * sin(theta)) - (params.c / params.m) * vel^2;
@@ -532,8 +630,8 @@ function [dx] = pwa_model(t, x, params, u)
         r = 2;
         acc = ((params.b / params.m) * u) / (1 + params.gamma * r) - (params.g * (theta)) - (p2 / params.m);
     else
+        r = 2;
         disp('Error');
-        return;
     end
 
     % acc = max(min(acc, params.acc_max), params.dec_max);
@@ -541,26 +639,6 @@ function [dx] = pwa_model(t, x, params, u)
 
     dx = [vel; acc];
 end
-
-% function [X_Np] = predmodgen(X0, u, z, delta, params, Np, Ts)
-%     % X0 (initial states) = 1x2 (x0, v0)
-%     % size(u) = Npx1
-%     % size(z) = Npx2
-%     % size(delta) = Npx6
-%     % size(X_Np) = Npx2
-% 
-%     X_Np = zeros(Np,2);
-%     X_Np(1,:) = X0;
-% 
-%     for i = 1:Np
-%         X_Np(i+1,1) = X_Np(i,1) + Ts * X_Np(i,2);
-%         X_Np(i+1,2) = X_Np(i,2) + Ts* ((params.r1 - params.r2) * z(i,1) ...
-%                     + params.r2 * u - (1 / params.m) * ((z(i,2) * (params.beta / params.alpha) - params.Ps) ...
-%                     + params.Ps * (X_Np(i,2) - params.alpha) + params.beta + delta(i,6) * (params.Ps * params.alpha - params.beta)) ...
-%                     - params.g * (delta(i,2) * params.theta1 + delta(i,3) * params.theta2 + delta(i,5) * params.theta4));
-%     end
-% 
-% end
 
 
 function [Ap, Bp, fp] = predmodgen(A1, B1, B2, B3, f, dim)
@@ -620,8 +698,6 @@ function vref = build_vref(t, params)
     vref(interval5) = 0.7 * params.alpha + (4/15) * params.alpha * (t(interval5) - 18);
     vref(interval6) = 0.9 * params.alpha;
 end
-
-
 
 function x_next = simulate_MLD(A1, B1, B2, B3, f, x0, u, params)
     pos = x0(1);
