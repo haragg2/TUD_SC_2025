@@ -72,6 +72,7 @@ params.acc_max = acc_max;
 params.dec_max = dec_max;
 params.alpha = alpha_val;
 params.beta = beta_val;
+params.Ts = 0.1;
 
 % gear ratio
 r = 1;
@@ -196,7 +197,10 @@ grid on;
 
 
 
-%% 2.6 
+%% 2.6
+
+T_end = 25;
+T = 0:params.Ts:T_end;
 
 params.r1 = params.b / (params.m * (1 + params.gamma));
 params.r2 = params.b / (params.m * (1 + 2 * params.gamma));
@@ -207,18 +211,9 @@ params.theta1 = (2 * params.h) / params.w;
 params.theta2 = params.h / params.w;
 params.theta3 = 0;
 params.theta4 = (-3 * params.h) / (2 * params.w);
-params.Ts = 0.1;
 
-Np = 5; % Prediction Horizon
-Nc = 4; % Control Horizon
-
-T_end = 25;
-T = 0:params.Ts:T_end;
-
-params.lambda = 0.1;
-x_init = 0;
-params.xmax = x_init + params.vmax * T_end;
-params.xmax = 559.5029;
+params.lambda = 0.001;
+params.xmax = 0 + params.vmax * T_end;
 
 % Dimensions
 dim.nx = 2;
@@ -227,35 +222,10 @@ dim.nd = 5;
 dim.nu = 1;
 dim.nq = 1;
 dim.np = 1;
-dim.Np = Np;
-dim.Nc = Nc;
+dim.Np = 5;
+dim.Nc = 4;
 
-% System Dynamics (MLD)
-A1 = [1, params.Ts; 0, (1 - (params.Ts * params.Ps) / params.m)];
-    
-    B1 = [0, 0; 
-        params.Ts * (params.r1 - params.r2), -(params.Ts / ...
-        params.m) * ((params.beta/params.alpha) - params.Ps)];
-    
-    B2 = [zeros(1, 5);
-        0, -(params.Ts * params.g * params.theta2), -( ...
-        params.Ts * params.g * params.theta2), ( ...
-        params.Ts * params.g * params.theta4), ...
-        -(params.Ts / params.m) * (params.alpha * params.Ps - params.beta)];
-    
-    B3 = [0; params.Ts * params.r2];
-    
-    f = [0; (-params.Ts*params.g*params.theta4)-(params.Ts / params.m) * ( ...
-        params.beta - params.alpha * params.Ps)];
-
-[Ap, Bp, fp] = predmodgen(A1, B1, B2, B3, f, dim);
-
-% Inequality constraints (MLD)
-[A_ineq, b_ineq, I_x, I_x0, I_ref] = build_constraints(params, dim);
-
-
-%% 2.6
-
+% To verify the MLD model
 x0 = [0.01; 40];
 x = zeros(length(T), dim.nx);
 x(1,:)  = x0';
@@ -288,70 +258,188 @@ plot(T, x(:, 2));
 
 %% 2.7
 
-% vref = 5 * ones(dim.Np, 1);
-% 
-% x0 = [101; 7];
+% Update Prediction and Control Horizon
+dim.Np = 100;
+dim.Nc = 100;
 
-vref = 23* ones(dim.Np, 1);
+% Vref for the follower car
+vref = 39* ones(dim.Np, 1);
+x0 = [100; 40];
 
-x0 = [100; 0.925*params.alpha];
+% Update max distance
+params.xmax = x0(1) + params.vmax * T_end;
 
-options = optimoptions("intlinprog", "Display", "iter");
+% Update lambda for the objective computation
+params.lambda = 0.001;
 
-obj = [zeros(1, dim.nz*dim.Np), zeros(1, dim.nd*dim.Np), zeros(1, dim.nu*dim.Np), ...
-          ones(1, dim.nq*dim.Nc), zeros(1, dim.nq*(dim.Np-dim.Nc)), ...
-          params.lambda*ones(1, dim.np*dim.Nc), zeros(1, dim.nq*(dim.Np-dim.Nc))]';
-
-intcon = dim.nz*dim.Np + 1:(dim.nz + dim.nd)*dim.Np;
-lb = [-inf*ones(dim.nz*dim.Np,1); zeros(length(intcon),1); -inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
-ub = [inf*ones(dim.nz*dim.Np,1); ones(length(intcon),1); inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
+% Get the objective function and prediction matrices
+[pred, obj] = build_obj(params, dim);
 
 % System dynamics are used to calculate the inequality constraints
-A = (A_ineq + I_x * Bp);
-b = (b_ineq - I_x * fp) - (I_x * Ap + I_x0) * x0 + I_ref * vref;
-output = intlinprog(obj, intcon, A, b, [], [], lb, ub, [], options);
+A = (obj.A_ineq + obj.I_x * pred.Bp);
+b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x0 + obj.I_ref * vref;
 
-% z = output(1:dim.nz*dim.Np);
-% delta = output(dim.nz*dim.Np + 1: (dim.nz + dim.nd)*dim.Np);
-% u = output((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
-% q = output((dim.nz + dim.nd + dim.nu)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np); 
-% p = output((dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq + dim.np)*dim.Np);
+% Solve the MLD MPC for an arbitrary k
+output = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
+
+optimal_control = output((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
+
+% Simulate the MLD system with one control sequence 
+x_val_Np = pred.Ap * x0 + pred.Bp * output + pred.fp;
+x_val_Np = reshape(x_val_Np,  [2, dim.Np])';
 
 
-%% 2.9
+figure(10);
+sgtitle("MPC Input Sequence for arbitrary step $k$");
+subplot(2, 1, 1);
+hold on;
+plot(T(1:dim.Np), optimal_control, LineWidth=1.2);
+xlabel('Time (s)');
+ylabel('Throttle Input');
+legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+% legendu1 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+legend(legendu);
+% legend(legendu, legendu1);
+hold off;
+
+subplot(2, 1, 2);
+hold on;
+plot(T(1:dim.Np), x_val_Np(:, 2), LineWidth=1.2);
+% plot(T(1:dim.Np), vref(1:dim.Np), '--', LineWidth=1.2);
+hold off;
+xlabel('Time (s)');
+ylabel('Velocity (m/s)');
+legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+% legendv1 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+legend(legendv,'Reference Velocity');
+% legend(legendv,'Reference Velocity', legendv1);
+
+
+%% 2.8
+
+dim.Np = 5;
+dim.Nc = 5;
+
+% Simulation time
+T_end = 50;
+T = 0:params.Ts:T_end;
+
+% Initial condition
+x0 = [100; 40];
+
+% Update max distance
+params.xmax = x0(1) + params.vmax * T_end;
 
 % Reference Velocity
-T_ref = [T, T_end:params.Ts:min((T_end+dim.Np)/params.Ts, 30)];
+T_ref = [T, T_end:params.Ts:(T_end+dim.Np)/params.Ts];
+vref = 39*ones(length(T_ref), 1);
 
-vref = build_vref(T_ref, params);
-vref = vref';
+% Update lambda for the objective computation
+params.lambda = 0.01;
 
-x0 = [50.000000000000001; 0.925*params.alpha];
-
-options = optimoptions("intlinprog", "Display", "off");
-
-obj = [zeros(1, dim.nz*dim.Np), zeros(1, dim.nd*dim.Np), zeros(1, dim.nu*dim.Np), ...
-          ones(1, dim.nq*dim.Nc), zeros(1, dim.nq*(dim.Np-dim.Nc)), ...
-          params.lambda*ones(1, dim.np*dim.Nc), zeros(1, dim.nq*(dim.Np-dim.Nc))]';
-
-intcon = dim.nz*dim.Np + 1:(dim.nz + dim.nd)*dim.Np;
-lb = [-inf*ones(dim.nz*dim.Np,1); zeros(length(intcon),1); -inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
-ub = [inf*ones(dim.nz*dim.Np,1); ones(length(intcon),1); inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
+% Get the objective function and prediction matrices
+[pred, obj] = build_obj(params, dim);
 
 % System dynamics are used to calculate the inequality constraints
-A = (A_ineq + I_x * Bp);
+A = (obj.A_ineq + obj.I_x * pred.Bp);
 
 u_prev = 0;
 x_val = zeros(size(T, 2), dim.nx);
 x_val(1, :) = x0';
 
-for k = 1:1:size(T, 2)
-% for k = 1
-    T(k)
+optimal_control = zeros(length(T)-1, 1);
 
-    b = (b_ineq - I_x * fp) - (I_x * Ap + I_x0) * x0 + I_ref * vref(k:k+dim.Np-1);
+for k = 1:1:size(T, 2)-1
+    tspan = [T(k) T(k+1)];
 
-    [output, fval, flag, msg] = intlinprog(obj, intcon, A, b, [], [], lb, ub, [], options);
+    % This inequality depends on the initial x0
+    b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x_val(k, :)' + obj.I_ref * vref(k:k+dim.Np-1);
+
+    [output, fval, flag, msg] = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
+
+    if flag == 1
+        z = output(1:dim.nz*dim.Np);
+        delta = output(dim.nz*dim.Np + 1: (dim.nz + dim.nd)*dim.Np);
+        u = output((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
+        q = output((dim.nz + dim.nd + dim.nu)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np); 
+        p = output((dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq + dim.np)*dim.Np); 
+
+        [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u(1), params), tspan, x0);
+        x0 = x_nl(end, :)'
+
+        u_prev = u(1);
+    else
+        [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u_prev, params), tspan, x0);
+        x0 = x_nl(end, :)';
+    end
+
+    optimal_control(k, :) = u_prev;
+    x_val(k+1, :) = x0;
+
+end
+
+figure(11);
+sgtitle("MPC Input Sequence for arbitrary step $k$");
+subplot(2, 1, 1);
+hold on;
+plot(T(1:end-1), optimal_control, LineWidth=1.2);
+xlabel('Time (s)');
+ylabel('Throttle Input');
+legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+legend(legendu);
+hold off;
+
+subplot(2, 1, 2);
+hold on;
+plot(T, x_val(:, 2), LineWidth=1.2);
+plot(T, vref(1:length(T)), '--', LineWidth=1.2);
+hold off;
+xlabel('Time (s)');
+ylabel('Velocity (m/s)');
+legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+legend(legendv,'Reference Velocity');
+
+%% 2.9
+
+% Simulation time
+T_end = 25;
+T = 0:params.Ts:T_end;
+
+% Reference Velocity
+T_ref = [T, T_end:params.Ts:min((T_end+dim.Np)/params.Ts, 30)];
+vref = build_vref(T_ref, params);
+vref = vref';
+
+% Initial condition
+x0 = [51; 0.925*params.alpha];
+
+% Update Prediction and Control Horizon
+dim.Np = 5;
+dim.Nc = 4;
+
+% Update max distance using initial condition and vmax
+params.xmax = x0(1) + params.vmax * T_end;
+
+% Update lambda for the objective computation
+params.lambda = 0.001;
+
+% Get the objective function and prediction matrices
+[pred, obj] = build_obj(params, dim);
+
+% System dynamics are used to calculate the inequality constraints
+A = (obj.A_ineq + obj.I_x * pred.Bp);
+
+u_prev = 0;
+x_val = zeros(size(T, 2), dim.nx);
+x_val(1, :) = x0';
+
+for k = 1:1:size(T, 2)-1
+    tspan = [T(k) T(k+1)];
+
+    % This inequality depends on the initial x0
+    b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x0 + obj.I_ref * vref(k:k+dim.Np-1);
+
+    [output, fval, flag, msg] = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
 
     if flag == 1
         z = output(1:dim.nz*dim.Np);
@@ -360,74 +448,47 @@ for k = 1:1:size(T, 2)
         q = output((dim.nz + dim.nd + dim.nu)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np); 
         p = output((dim.nz + dim.nd + dim.nu + dim.nq)*dim.Np + 1: (dim.nz + dim.nd + dim.nu + dim.nq + dim.np)*dim.Np); 
     
-        x1_Np = Ap * x0 + Bp * [z; delta; u; q; p] + fp;
-        x0 = x1_Np(1:dim.nx, :);
+        % x1_Np = Ap * x0 + Bp * [z; delta; u; q; p] + fp;
+        [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u(1), params), tspan, x0);
+        x0 = x_nl(end, :)';
 
-        u_prev = u;
+        u_prev = u(1);
     else
-        x1_Np = Ap * x0 + Bp * [z; delta; u_prev; q; p] + fp;
-        x0 = x1_Np(1:dim.nx, :);
+        [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u_prev, params), tspan, x0);
+        x0 = x_nl(end, :)';
     end
-    x_val(k+1, :) = x0';
+    x_val(k+1, :) = x0;
 
 end
 
 figure;
-plot(T, x_val(1:end-1, 2));
+plot(T, x_val(:, 2));
 
+%% Function
 
-% Cost Function
-% J = ones(1,Nc) * q + lambda * ones(1,Nc) * p;
+function dx = NL_Dynamics(t, x, u, params)
+    pos = x(1); vel = x(2);
 
-% [X_Np] = predmodgen(X0, u, z, delta, params, Np, Ts); % X_Np = [x;v] (dynamic constraints)
-% 
-% % Equality Constraints
-% X == X_Np;
-% delta(:,2) + delta(:,3) + delta(:,4) + delta(:,5) == 1;
-% 
-% % Inequality Constraints 
-% X(:,1) - 50 - (xmax - 50) * (1 - delta(:,2)) <= 0;
-% eps(1) - (50 + eps(1)) * delta(:,2) - X(:,1) + 50 <= 0;
-% X(:,1) - 100 - (xmax - 100) * (1 - delta(:,3)) <= 0;
-% eps(1) - (100 + eps(1)) * delta(:,3) - X(:,1) + 100 <= 0;
-% X(:,1) - 200 - (xmax - 200) * (1 - delta(:,4)) <= 0;
-% eps(1) - (200 + eps(1)) * delta(:,4) - X(:,1) + 200 <= 0;
-% 200 - X(:,1) + eps(1) - 200 * (1 - delta(:,5)) <= 0;
-% eps(1) + (200 - xmax - eps(1)) * delta(:,5) + X(:,1) - 200 <= 0;
-% 
-% X(:,2) - params.vg + eps(1) - (params.vmax - params.vg + eps(1)) * (1 - delta(:,1)) <= 0;
-% params.vg - X(:,2) - params.vg * delta(:,1) <= 0;
-% X(:,2) - params.alpha - (params.vmax - params.alpha) * (1 - delta(:,6)) <= 0;
-% eps(1) - (params.alpha + eps(1)) * delta(:,6) - X(:,2) + params.alpha <= 0;
-% 
-% z(:,1) - umax * delta(:,1) <= 0;
-% umin * delta(:,1) - z(:,1) <= 0;
-% z(:,1) - u + umin * (1 - delta(:,1)) <= 0;
-% u - umax * (1 - delta(:,1)) - z(:,1) <= 0;
-% z(:,2) - params.vmax * delta(:,6) <= 0;
-% - z(:,2) <= 0;
-% z(:,2) - X(:,2) <= 0;
-% X(:,2) - params.vmax * (1 - delta(:,6)) - z(:,2) <= 0;
-% 
-% u - umax <= 0;
-% umin - u <= 0;
-% -X(:,2) <= 0;
-% X(:,2) - params.vmax <= 0;
-% -X(:,1) <= 0;
-% X(:,1) - xmax <= 0;
-% X(2:end,2) - X(1:end-1,2) - Ts*(params.acc_comf) <= 0;
-% -X(2:end,2) + X(1:end-1,2) - Ts*(params.acc_comf) <= 0;
-% 
-% X(:,2) - vref - q <= 0;
-% -X(:,2) + vref - q <= 0;
-% u(2:end,2) - u(1:end-1,2) - p <= 0;
-% -u(2:end,2) + u(1:end-1,2) - p <= 0;
-% u(1) - p <= 0;
-% -u(1) - p <= 0;
-% 
+    x_dot = vel;
 
+    slopes = [((2 * params.h) / params.w), (((params.h) / params.w)), 0, ((-3 * params.h) / (2 * params.w))];
+    [y, idx] = min([((2 * params.h * pos) / params.w), (((params.h * pos) / params.w) + params.h), (3 * params.h), (((-3 * params.h * pos) / (2 * params.w)) + 9 * params.h)]);
+    theta = slopes(idx);
 
-%% Function 
+    if vel >= 0 && vel < params.vg
+        r = 1;
+    elseif vel >= params.vg && vel <= params.vmax
+        r = 2;
+    else
+        disp('NL_Dy ERROR: Vel exceeded max');
+        return;
+    end
+
+    v_dot = ((params.b / params.m) * u) / (1 + params.gamma * r) - (params.g * sin(theta)) - (params.c / params.m) * vel^2;
+
+    dx = [x_dot; v_dot];
+end
+
 
 function dx = pwa_friction(t, x, params, r, theta, u)
     dx = zeros(2, 1);
@@ -597,4 +658,47 @@ function x_next = simulate_MLD(A1, B1, B2, B3, f, x0, u, params)
     z = [z_1; z_2];
 
     x_next = A1 * x0 + B1 * z + B2 * delta + B3 * u + f;
+end
+
+function [pred, obj] = build_obj(params, dim)
+    
+    % System Dynamics (MLD)
+    pred.A1 = [1, params.Ts; 0, (1 - (params.Ts * params.Ps) / params.m)];
+    
+    pred.B1 = [0, 0; 
+        params.Ts * (params.r1 - params.r2), -(params.Ts / ...
+        params.m) * ((params.beta/params.alpha) - params.Ps)];
+    
+    pred.B2 = [zeros(1, 5);
+        0, -(params.Ts * params.g * params.theta2), -( ...
+        params.Ts * params.g * params.theta2), ( ...
+        params.Ts * params.g * params.theta4), ...
+        -(params.Ts / params.m) * (params.alpha * params.Ps - params.beta)];
+    
+    pred.B3 = [0; params.Ts * params.r2];
+    
+    pred.f = [0; (-params.Ts*params.g*params.theta4)-(params.Ts / params.m) * ( ...
+        params.beta - params.alpha * params.Ps)];
+    
+    % Get prediction matrices
+    [pred.Ap, pred.Bp, pred.fp] = predmodgen(pred.A1, pred.B1, pred.B2, pred.B3, pred.f, dim);
+    
+    % Inequality constraints (MLD)
+    [obj.A_ineq, obj.b_ineq, obj.I_x, obj.I_x0, obj.I_ref] = build_constraints(params, dim);
+    
+    % Equality constraints
+    obj.Aeq = [zeros(dim.Np-dim.Nc, dim.nz*dim.Np), zeros(dim.Np-dim.Nc, dim.nd*dim.Np), ...
+           zeros(dim.Np-dim.Nc, dim.Nc-1), -1*ones(dim.Np-dim.Nc, 1), eye(dim.Np-dim.Nc),...
+           zeros(dim.Np-dim.Nc, dim.nq*dim.Np), zeros(dim.Np-dim.Nc, dim.np*dim.Np)];
+    
+    obj.beq = zeros(dim.Np-dim.Nc, 1);
+    
+    obj.options = optimoptions("intlinprog", "Display", "off");
+    obj.func = [zeros(1, dim.nz*dim.Np), zeros(1, dim.nd*dim.Np), zeros(1, dim.nu*dim.Np), ...
+              ones(1, dim.nq*dim.Np), params.lambda*ones(1, dim.np*dim.Np)]';
+    
+    obj.intcon = dim.nz*dim.Np + 1:(dim.nz + dim.nd)*dim.Np;
+    obj.lb = [-inf*ones(dim.nz*dim.Np,1); zeros(length(obj.intcon),1); -inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
+    obj.ub = [inf*ones(dim.nz*dim.Np,1); ones(length(obj.intcon),1); inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
+
 end

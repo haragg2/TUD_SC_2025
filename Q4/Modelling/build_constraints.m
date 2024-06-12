@@ -160,7 +160,7 @@ function [A_ineq, b_ineq, I_x, I_x0, I_ref] = build_constraints(params, dim)
     I_u2p = kron(eye(dim.Np+1), I_u2);
     I_u2p = I_u2p(1:end-33, 2:end);
 
-    I_u = kron(eye(dim.Np), I_u1) + I_u2p % multiply this with u(0) ... u(dim.Np-1)
+    I_u = kron(eye(dim.Np), I_u1) + I_u2p; % multiply this with u(0) ... u(dim.Np-1)
 
     I_ref = [zeros(27, 1); 1; -1; zeros(4, 1)]; % multiply this with vref
     I_ref = kron(eye(dim.Np), I_ref);
