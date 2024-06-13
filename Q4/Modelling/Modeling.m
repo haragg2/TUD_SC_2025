@@ -301,18 +301,18 @@ plot(T, x(:, 2));
 %% 2.7
 
 % Update Prediction and Control Horizon
-dim.Np = 100;
-dim.Nc = 100;
+dim.Np = 4;
+dim.Nc = 2;
 
 % Vref for the follower car
-vref = 39* ones(dim.Np, 1);
+vref = 40.2 * ones(dim.Np, 1);
 x0 = [100; 40];
 
 % Update max distance
 params.xmax = x0(1) + params.vmax * T_end;
 
 % Update lambda for the objective computation
-params.lambda = 0.001;
+params.lambda = 0.1;
 
 % Get the objective function and prediction matrices
 [pred, obj] = build_obj(params, dim);
@@ -322,16 +322,23 @@ A = (obj.A_ineq + obj.I_x * pred.Bp);
 b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x0 + obj.I_ref * vref;
 
 % Solve the MLD MPC for an arbitrary k
-output = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
+% output = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
 
-optimal_control = output((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
+% GLPK
+ctype = [repmat('U', 1, size(A, 1), 1) repmat('S', 1, size(obj.Aeq, 1), 1)];
+vartype = [repmat('C', 1, dim.nz*dim.Np) repmat('I', 1, dim.nd*dim.Np) repmat('C', 1, dim.nu*dim.Np) ...
+            repmat('C', 1, dim.nq*dim.Np) repmat('C', 1, dim.np*dim.Np)];
+
+[output_glpk, fval, flag, msg] = glpk(obj.func, [A; obj.Aeq], [b; obj.beq], obj.lb, obj.ub, ctype, vartype, 1);
+
+optimal_control = output_glpk((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
 
 % Simulate the MLD system with one control sequence 
-x_val_Np = pred.Ap * x0 + pred.Bp * output + pred.fp;
+x_val_Np = pred.Ap * x0 + pred.Bp * output_glpk + pred.fp;
 x_val_Np = reshape(x_val_Np,  [2, dim.Np])';
 
 
-figure(10);
+figure;
 sgtitle("MPC Input Sequence for arbitrary step $k$");
 subplot(2, 1, 1);
 hold on;
@@ -347,7 +354,7 @@ hold off;
 subplot(2, 1, 2);
 hold on;
 plot(T(1:dim.Np), x_val_Np(:, 2), LineWidth=1.2);
-% plot(T(1:dim.Np), vref(1:dim.Np), '--', LineWidth=1.2);
+plot(T(1:dim.Np), vref(1:dim.Np), '--', LineWidth=1.2);
 hold off;
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
@@ -391,15 +398,21 @@ x_val(1, :) = x0';
 
 optimal_control = zeros(length(T)-1, 1);
 
+ctype = [repmat('U', 1, size(A, 1), 1) repmat('S', 1, size(obj.Aeq, 1), 1)];
+vartype = [repmat('C', 1, dim.nz*dim.Np) repmat('I', 1, dim.nd*dim.Np) repmat('C', 1, dim.nu*dim.Np) ...
+            repmat('C', 1, dim.nq*dim.Np) repmat('C', 1, dim.np*dim.Np)];
+
 for k = 1:1:size(T, 2)-1
     tspan = [T(k) T(k+1)];
 
     % This inequality depends on the initial x0
     b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x_val(k, :)' + obj.I_ref * vref(k:k+dim.Np-1);
 
-    [output, fval, flag, msg] = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
+    % [output, fval, flag, msg] = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
+    [output, fval, flag, msg] = glpk(obj.func, [A; obj.Aeq], [b; obj.beq], obj.lb, obj.ub, ctype, vartype, 1);
 
-    if flag == 1
+    % if flag == 1
+    if flag == 5
         z = output(1:dim.nz*dim.Np);
         delta = output(dim.nz*dim.Np + 1: (dim.nz + dim.nd)*dim.Np);
         u = output((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
@@ -478,15 +491,21 @@ x_val(1, :) = x0';
 
 optimal_control = zeros(length(T)-1, 1);
 
+ctype = [repmat('U', 1, size(A, 1), 1) repmat('S', 1, size(obj.Aeq, 1), 1)];
+vartype = [repmat('C', 1, dim.nz*dim.Np) repmat('I', 1, dim.nd*dim.Np) repmat('C', 1, dim.nu*dim.Np) ...
+            repmat('C', 1, dim.nq*dim.Np) repmat('C', 1, dim.np*dim.Np)];
+
 for k = 1:1:size(T, 2)-1
     tspan = [T(k) T(k+1)];
 
     % This inequality depends on the initial x0
     b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x0 + obj.I_ref * vref(k:k+dim.Np-1);
 
-    [output, fval, flag, msg] = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
+    % [output, fval, flag, msg] = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
+    [output, fval, flag, msg] = glpk(obj.func, [A; obj.Aeq], [b; obj.beq], obj.lb, obj.ub, ctype, vartype, 1);
 
-    if flag == 1
+    % if flag == 1
+    if flag == 5
         z = output(1:dim.nz*dim.Np);
         delta = output(dim.nz*dim.Np + 1: (dim.nz + dim.nd)*dim.Np);
         u = output((dim.nz + dim.nd)*dim.Np + 1: (dim.nz + dim.nd + dim.nu)*dim.Np);
