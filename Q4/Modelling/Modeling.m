@@ -99,25 +99,23 @@ tspan = [T(1) T(end)];
 
 figure;
 sgtitle("Friction Force Comparison");
-% Subplot 1: Velocity of follower car
 subplot(2, 1, 1);
 hold on;
 plot(t_og, X_og(:, 1), LineWidth=1.2);
 plot(t_og, X_pwa(:, 1), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Position ($m$)');
-title('Position of the follower car over time');
+title('Position over time');
 hold off;
 grid on;
 
-% Subplot 2: Position of follower car
 subplot(2, 1, 2);
 hold on;
 plot(t_og, X_og(:, 2), LineWidth=1.2);
 plot(t_og, X_pwa(:, 2), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
-title('Velocity of the follower car over time');
+title('Velocity over time');
 hold off;
 grid on;
 legend("NL Model", "PWA Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
@@ -270,15 +268,26 @@ for k=1:length(T)-1
 end
 
 figure;
+sgtitle("MLD vs PWA Model Simulation");
+subplot(2, 1, 1);
+hold on;
+plot(T, x_pwa_dis(:, 1), LineWidth=1.2);
+plot(T, x(:, 1), LineWidth=1.2);
+hold off;
+xlabel('Time ($s$)');
+ylabel('Position ($m$)');
+grid on;
+
+subplot(2, 1, 2);
 hold on;
 plot(T, x_pwa_dis(:, 2), LineWidth=1.2);
 plot(T, x(:, 2), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
-title("MLD vs PWA Model Simulation");
-legend("PWA Discrete", "MLD Model");
 hold off;
 grid on;
+legend("PWA Discrete", "MLD Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
+
 
 %% Simulate MLD uding if conditions 
 
@@ -313,7 +322,7 @@ x0 = [100; 40];
 params.xmax = x0(1) + params.vmax * T_end;
 
 % Update lambda for the objective computation
-params.lambda = 0.1;
+params.lambda = 0.001;
 
 % Get the objective function and prediction matrices
 [pred, obj] = build_obj(params, dim);
@@ -339,15 +348,15 @@ x_val_Np = pred.Ap * x0 + pred.Bp * output_glpk + pred.fp;
 x_val_Np = reshape(x_val_Np,  [2, dim.Np])';
 
 
-figure;
+figure(7);
 sgtitle("MPC Input Sequence for arbitrary step $k$");
 subplot(2, 1, 1);
 hold on;
 plot(T(1:dim.Np), optimal_control, LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Throttle Input');
-legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
-% legendu1 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+% legendu1 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
 legend(legendu);
 % legend(legendu, legendu1);
 grid on;
@@ -356,38 +365,37 @@ hold off;
 subplot(2, 1, 2);
 hold on;
 plot(T(1:dim.Np), x_val_Np(:, 2), LineWidth=1.2);
-plot(T(1:dim.Np), vref(1:dim.Np), '--', LineWidth=1.2);
+% plot(T(1:dim.Np), vref(1:dim.Np), '--', LineWidth=1.2);
 hold off;
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
-legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
-% legendv1 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+% legendv1 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
 legend(legendv,'Reference Velocity');
 % legend(legendv,'Reference Velocity', legendv1);
 grid on;
 
-
 %% 2.8
 
-dim.Np = 5;
-dim.Nc = 5;
+dim.Np = 4;
+dim.Nc = 2;
 
 % Simulation time
-T_end = 50;
+T_end = 5;
 T = 0:params.Ts:T_end;
 
 % Initial condition
-x0 = [0.1; 40];
+x0 = [100; 40];
 
 % Update max distance
 params.xmax = x0(1) + params.vmax * T_end;
 
 % Reference Velocity
 T_ref = [T, T_end:params.Ts:(T_end+dim.Np)/params.Ts];
-vref = 39*ones(length(T_ref), 1);
+vref = 40.2*ones(length(T_ref), 1);
 
 % Update lambda for the objective computation
-params.lambda = 0.0001;
+params.lambda = 0.001;
 
 % Get the objective function and prediction matrices
 [pred, obj] = build_obj(params, dim);
@@ -437,27 +445,31 @@ for k = 1:1:size(T, 2)-1
 end
 
 % Figures
-figure;
-sgtitle("MPC Input Sequence for arbitrary step $k$");
+figure(8);
+sgtitle("MPC Closed-loop Response");
 subplot(2, 1, 1);
 hold on;
 plot(T(1:end-1), optimal_control, LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Throttle Input');
-legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
-legend(legendu);
+% legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+% legend(legendu);
+legendu1 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+legend(legendu, legendu1);
 grid on;
 hold off;
 
 subplot(2, 1, 2);
 hold on;
 plot(T, x_val(:, 2), LineWidth=1.2);
-plot(T, vref(1:length(T)), '--', LineWidth=1.2);
+% plot(T, vref(1:length(T)), '--', LineWidth=1.2);
 hold off;
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
-legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
-legend(legendv,'Reference Velocity');
+% legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+% legend(legendv,'Reference Velocity');
+legendv1 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+legend(legendv,'Reference Velocity', legendv1);
 grid on;
 
 %% 2.9
@@ -602,7 +614,7 @@ function dx = NL_Dynamics(t, x, u, params)
 
     if vel >= 0 && vel < params.vg
         r = 1;
-    elseif vel >= params.vg
+    else
         r = 2;
     end
 
