@@ -179,7 +179,6 @@ function xp = MLD_test(params, x0, u)
         % x0
         xp = A1 * x0 + B1 * z + B2 * delta + B3 * u + f;
     else
-        disp("Infeasible Solution. Previous value used");
         xp = x0;
     end
 

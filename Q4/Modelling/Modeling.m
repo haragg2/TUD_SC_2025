@@ -102,17 +102,6 @@ sgtitle("Friction Force Comparison");
 % Subplot 1: Velocity of follower car
 subplot(2, 1, 1);
 hold on;
-plot(t_og, X_og(:, 2), LineWidth=1.2);
-plot(t_og, X_pwa(:, 2), LineWidth=1.2);
-xlabel('Time ($s$)');
-ylabel('Velocity ($m/s$)');
-title('Velocity of the follower car over time');
-hold off;
-grid on;
-
-% Subplot 2: Position of follower car
-subplot(2, 1, 2);
-hold on;
 plot(t_og, X_og(:, 1), LineWidth=1.2);
 plot(t_og, X_pwa(:, 1), LineWidth=1.2);
 xlabel('Time ($s$)');
@@ -120,7 +109,18 @@ ylabel('Position ($m$)');
 title('Position of the follower car over time');
 hold off;
 grid on;
-legend("Original", "PWA",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
+
+% Subplot 2: Position of follower car
+subplot(2, 1, 2);
+hold on;
+plot(t_og, X_og(:, 2), LineWidth=1.2);
+plot(t_og, X_pwa(:, 2), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+title('Velocity of the follower car over time');
+hold off;
+grid on;
+legend("NL Model", "PWA Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
 
 
 %% 2.4
@@ -165,8 +165,8 @@ figure;
 sgtitle("PWA Model Simulation");
 subplot(2, 1, 1);
 hold on;
-plot(t_pwa, x_pwa_cont(:, 1), LineWidth=1.2);
 plot(t_nl, x_nl(:, 1), LineWidth=1.2);
+plot(t_pwa, x_pwa_cont(:, 1), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Position ($m$)');
 title('Position over time');
@@ -175,14 +175,14 @@ grid on;
 
 subplot(2, 1, 2);
 hold on;
-plot(t_pwa, x_pwa_cont(:, 2), LineWidth=1.2);
 plot(t_nl, x_nl(:, 2), LineWidth=1.2);
+plot(t_pwa, x_pwa_cont(:, 2), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
 title('Velocity over time');
 hold off;
 grid on;
-legend("PWA Model", "NL Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
+legend("NL Model", "PWA Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
 
 figure;
 theta_pwa = zeros(length(x_pwa_cont(:, 1)), 1);
@@ -217,8 +217,8 @@ figure;
 sgtitle("Forward Euler Discretization of PWA model");
 subplot(2, 1, 1);
 hold on;
-plot(T, x_pwa_dis(:, 1), LineWidth=1.2);
 plot(t_pwa, x_pwa_cont(:, 1), LineWidth=1.2);
+plot(T, x_pwa_dis(:, 1), LineWidth=1.2);
 hold off;
 xlabel('Time ($s$)');
 ylabel('Position ($m$)');
@@ -226,13 +226,13 @@ grid on;
 
 subplot(2, 1, 2);
 hold on;
-plot(T, x_pwa_dis(:, 2), LineWidth=1.2);
 plot(t_pwa, x_pwa_cont(:, 2), LineWidth=1.2);
+plot(T, x_pwa_dis(:, 2), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
 hold off;
 grid on;
-legend("PWA Model", "NL Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
+legend("PWA Continuous", "PWA Discrete",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
 
 
 %% 2.6
@@ -271,11 +271,12 @@ end
 
 figure;
 hold on;
-plot(T, x(:, 2), LineWidth=1.2);
 plot(T, x_pwa_dis(:, 2), LineWidth=1.2);
+plot(T, x(:, 2), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
 title("MLD vs PWA Model Simulation");
+legend("PWA Discrete", "MLD Model");
 hold off;
 grid on;
 
@@ -547,9 +548,13 @@ ylabel('Position ($m$)');
 title("Position over Time");
 grid on;
 subplot(3, 1, 3);
+hold on;
 plot(T, x_val(:, 2), LineWidth=1.2);
+plot(T, vref(1:length(T)), '--', LineWidth=1.2);
+hold off;
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
+legend("$v$", "$v_{ref}$");
 title("Velocity over Time");
 grid on;
 
@@ -569,14 +574,10 @@ ylabel('Throttle Input');
 title("Throttle Input Change over Time");
 grid on;
 subplot(4, 1, 3);
-hold on;
 plot(T, x_val(:, 2) - vref(1:length(T)), LineWidth=1.2);
-plot(T, vref(1:length(T)), '--', LineWidth=1.2);
-hold off;
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
-legend("$v - v_{ref}$", "$v_{ref}$");
-title("Velocities over Time");
+title("Change in Velocity over Time");
 grid on;
 subplot(4, 1, 4);
 plot(T(2:end), (x_val(2:end, 2) - x_val(1:end-1, 2))/params.Ts, LineWidth=1.2);
@@ -601,11 +602,8 @@ function dx = NL_Dynamics(t, x, u, params)
 
     if vel >= 0 && vel < params.vg
         r = 1;
-    elseif vel >= params.vg && vel <= params.vmax
+    elseif vel >= params.vg
         r = 2;
-    else
-        r = 2;
-        disp('NL_Dy ERROR: Vel exceeded max');
     end
 
     v_dot = ((params.b / params.m) * u) / (1 + params.gamma * r) - (params.g * sin(theta)) - (params.c / params.m) * vel^2;
@@ -626,8 +624,6 @@ function dx = pwa_friction(t, x, params, r, theta, u)
         acc = ((params.b/params.m) * u) / (1 + params.gamma * r) - (params.g * sin(theta)) - (p1 / params.m);
     elseif vel > params.alpha
         acc = ((params.b/params.m) * u) / (1 + params.gamma * r) - (params.g * sin(theta)) - (p2 / params.m);
-    else
-        disp('PWA_Friction ERROR: Vel exceeded max');
     end
 
     dx = [vel; acc];
@@ -655,9 +651,6 @@ function [dx] = pwa_model(t, x, params, u)
     elseif vel > params.alpha
         r = 2;
         acc = ((params.b / params.m) * u) / (1 + params.gamma * r) - (params.g * (theta)) - (p2 / params.m);
-    else
-        r = 2;
-        disp('PWA_Model ERROR: Vel exceeded max');
     end
 
     % acc = max(min(acc, params.acc_max), params.dec_max);
