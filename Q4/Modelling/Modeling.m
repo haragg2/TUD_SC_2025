@@ -22,9 +22,9 @@ params.vg = 16;
 params.h = 10;
 params.w = 50;
 
-
 params.Ts = 0.1;
 
+%For Q2.3
 % gear ratio
 r = 1;
 
@@ -72,10 +72,6 @@ params.alpha = alpha_val;
 params.beta = beta_val;
 
 %% 2.3
-
-
-
-%%
 
 % Define symbolic variables
 syms x(t) v(t) u
@@ -130,7 +126,7 @@ legend("Original", "PWA",'Location','southoutside', 'Orientation','horizontal', 
 %% 2.4
 
 % Initialize x_init
-x_road = 1:5000;
+x_road = 1:250;
 slopes = [((2 * params.h) / params.w); (params.h / params.w); 0; ((-3 * params.h) / (2 * params.w))];
 
 road_height = @(pos) min([((2 * params.h * pos) / params.w); (((params.h * pos) / params.w) + params.h); ...
@@ -158,7 +154,7 @@ grid on;
 v_init = 40;
 x_init = 10;
 x0 = [x_init; v_init];
-T_end = 50;
+T_end = 40;
 
 tspan = [T(1) T_end];
 [t_pwa, x_pwa_cont] = ode45(@(t, Y) pwa_model(t, Y, params, 0.8 * cos(t)), tspan, x0);
@@ -201,12 +197,12 @@ ylabel('Theta (rad)');
 title('Road Profile ($\theta$)');
 grid on;
 
-
-
 %% 2.5
 
-% Initial condition same as 2.4
+T_end = 40;
+T = 0:params.Ts:T_end;
 
+% Initial condition same as 2.4
 x_pwa_dis = zeros(length(T), 2);
 x_pwa_dis(1, :) = x0;
 
@@ -241,9 +237,6 @@ legend("PWA Model", "NL Model",'Location','southoutside', 'Orientation','horizon
 
 %% 2.6
 
-T_end = 25;
-T = 0:params.Ts:T_end;
-
 params.r1 = params.b / (params.m * (1 + params.gamma));
 params.r2 = params.b / (params.m * (1 + 2 * params.gamma));
 params.Ps = (params.c * params.vmax^2 - params.beta) / (params.vmax - params.alpha);
@@ -277,7 +270,14 @@ for k=1:length(T)-1
 end
 
 figure;
-plot(T, x(:, 2));
+hold on;
+plot(T, x(:, 2), LineWidth=1.2);
+plot(T, x_pwa_dis(:, 2), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+title("MLD vs PWA Model Simulation");
+hold off;
+grid on;
 
 %% Simulate MLD uding if conditions 
 
@@ -349,6 +349,7 @@ legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, 
 % legendu1 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 legend(legendu);
 % legend(legendu, legendu1);
+grid on;
 hold off;
 
 subplot(2, 1, 2);
@@ -362,6 +363,7 @@ legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, 
 % legendv1 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 legend(legendv,'Reference Velocity');
 % legend(legendv,'Reference Velocity', legendv1);
+grid on;
 
 
 %% 2.8
@@ -443,6 +445,7 @@ xlabel('Time ($s$)');
 ylabel('Throttle Input');
 legendu = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 legend(legendu);
+grid on;
 hold off;
 
 subplot(2, 1, 2);
@@ -454,6 +457,7 @@ xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
 legendv = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 legend(legendv,'Reference Velocity');
+grid on;
 
 %% 2.9
 
@@ -470,8 +474,8 @@ vref = vref';
 x0 = [101; 0.925*params.alpha];
 
 % Update Prediction and Control Horizon
-dim.Np = 10;
-dim.Nc = 8;
+dim.Np = 2;
+dim.Nc = 1;
 
 % Update max distance using initial condition and vmax
 params.xmax = x0(1) + params.vmax * T_end;
@@ -581,6 +585,9 @@ ylabel('Acceleration ($m/s^2$)');
 title("Acceleration over Time");
 grid on;
 
+%% 2.10
+
+
 %% Function
 
 function dx = NL_Dynamics(t, x, u, params)
@@ -620,7 +627,7 @@ function dx = pwa_friction(t, x, params, r, theta, u)
     elseif vel > params.alpha
         acc = ((params.b/params.m) * u) / (1 + params.gamma * r) - (params.g * sin(theta)) - (p2 / params.m);
     else
-        disp("Error");
+        disp('PWA_Friction ERROR: Vel exceeded max');
     end
 
     dx = [vel; acc];
@@ -650,7 +657,7 @@ function [dx] = pwa_model(t, x, params, u)
         acc = ((params.b / params.m) * u) / (1 + params.gamma * r) - (params.g * (theta)) - (p2 / params.m);
     else
         r = 2;
-        disp('Error');
+        disp('PWA_Model ERROR: Vel exceeded max');
     end
 
     % acc = max(min(acc, params.acc_max), params.dec_max);
@@ -732,8 +739,6 @@ function x_next = simulate_MLD(A1, B1, B2, B3, f, x0, u, params)
         delta_4 = 1;
     elseif (pos >= 200 + eps(1))
         delta_5 = 1;
-    else
-        disp("Error");
     end
 
     if (vel >= 0) && (vel <= params.vg - eps(1))
@@ -741,7 +746,7 @@ function x_next = simulate_MLD(A1, B1, B2, B3, f, x0, u, params)
     elseif (vel >= params.vg) && (vel <= params.alpha)
         delta_6 = 1;
     elseif (vel > params.alpha) && (vel <= params.vmax)
-        disp("vel btw alpha and vmax")
+        disp("vel between alpha and vmax")
     elseif (vel > params.vmax)
         disp("vel greater than vmax")
     end
