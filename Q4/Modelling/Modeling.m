@@ -71,6 +71,37 @@ beta_val = beta_val(idx);
 params.alpha = alpha_val;
 params.beta = beta_val;
 
+% Define piecewise function for P(v)
+P = piecewise(v <= params.alpha, (params.beta / params.alpha) * v, ...
+              params.alpha < v & v <= params.vmax, ...
+              (params.c*params.vmax^2 - params.beta) / (params.vmax - params.alpha) * (v - params.alpha) + params.beta);
+
+% Generate values of v from 0 to vmax
+v_values = linspace(0, params.vmax, 1000);
+
+% Evaluate P(v) for the generated v values
+P_pwa = double(subs(P, v, v_values));
+P_nl = params.c * v_values.^2;
+
+% Generate values of v from 0 to vmax
+v = linspace(0, params.vmax, 1000);
+
+% Plotting
+figure;
+hold on;
+plot(v_values, P_nl, 'LineWidth', 1.2);
+plot(v_values, P_pwa, 'LineWidth', 1.2);
+plot([params.alpha, params.alpha], [0, params.beta], 'k--');
+plot([0, params.alpha], [params.beta, params.beta], 'k--');
+text(params.alpha, -30, '$$\alpha$$', 'HorizontalAlignment', 'center');
+text(-1, params.beta + 30, '$$\beta$$', 'HorizontalAlignment', 'center');
+hold off;
+xlabel('Velocity ($m/s$)');
+ylabel('$F$');
+legend("Non-linear (V)", "PWA (P)");
+title('Friction Curve');
+grid on;
+
 %% 2.3
 
 % Define symbolic variables
@@ -288,26 +319,6 @@ hold off;
 grid on;
 legend("PWA Discrete", "MLD Model",'Location','southoutside', 'Orientation','horizontal', 'Box', 'Off');
 
-
-%% Simulate MLD uding if conditions 
-
-% x0 = [0.01; 40];
-% x = zeros(length(T), dim.nx);
-% x(1,:)  = x0';
-% 
-% for k=1:length(T)-1
-%     x(k+1,:) = (simulate_MLD(A1, B1, B2, B3, f, x(k,:)', sin(k*params.Ts), params))' ;
-% end
-% 
-% 
-% figure;
-% % Subplot 1: Velocity of follower car
-% hold on;
-% plot(t_model, X_model(:, 2), LineWidth=1.2);
-% plot(T, x(:, 2), LineWidth=1.2)
-% hold off;
-% grid on;
-
 %% 2.7
 
 % Update Prediction and Control Horizon
@@ -487,8 +498,8 @@ vref = vref';
 x0 = [101; 0.925*params.alpha];
 
 % Update Prediction and Control Horizon
-dim.Np = 3;
-dim.Nc = 3;
+dim.Np = 5;
+dim.Nc = 4;
 
 % Update max distance using initial condition and vmax
 params.xmax = x0(1) + params.vmax * T_end;
@@ -512,7 +523,15 @@ ctype = [repmat('U', 1, size(A, 1), 1) repmat('S', 1, size(obj.Aeq, 1), 1)];
 vartype = [repmat('C', 1, dim.nz*dim.Np) repmat('I', 1, dim.nd*dim.Np) repmat('C', 1, dim.nu*dim.Np) ...
             repmat('C', 1, dim.nq*dim.Np) repmat('C', 1, dim.np*dim.Np)];
 
-for k = 1:1:size(T, 2)-1
+% To measure the computation time
+total_time = 0;
+num_iterations = size(T, 2) - 1;
+iteration_times_imp = zeros(1, num_iterations);
+
+for k = 1:1:num_iterations
+    % Start timing
+    tic;
+
     tspan = [T(k) T(k+1)];
 
     % This inequality depends on the initial x0
@@ -520,6 +539,10 @@ for k = 1:1:size(T, 2)-1
 
     % [output, fval, flag, msg] = intlinprog(obj.func, obj.intcon, A, b, obj.Aeq, obj.beq, obj.lb, obj.ub, [], obj.options);
     [output, fval, flag, msg] = glpk(obj.func, [A; obj.Aeq], [b; obj.beq], obj.lb, obj.ub, ctype, vartype, 1);
+
+    iteration_time = toc; % Stop timing
+    iteration_times_imp(k) = iteration_time; % Store the computation time for this iteration
+    total_time = total_time + iteration_time; % Accumulate the total time
 
     % if flag == 1
     if flag == 5
@@ -540,8 +563,11 @@ for k = 1:1:size(T, 2)-1
 
     optimal_control(k, :) = u_prev;
     x_val(k+1, :) = x0;
-
 end
+
+avg_time_per_itr = total_time / num_iterations;
+fprintf(['Average time to compute control input with Implicit MPC: %.4f seconds' ...
+    ' with Np = %d, Nc = %d\n'], avg_time_per_itr, dim.Np, dim.Nc);
 
 % Figures
 figure;
@@ -589,7 +615,7 @@ subplot(4, 1, 3);
 plot(T, x_val(:, 2) - vref(1:length(T)), LineWidth=1.2);
 xlabel('Time ($s$)');
 ylabel('Velocity ($m/s$)');
-title("Change in Velocity over Time");
+title("Velocity Error over Time");
 grid on;
 subplot(4, 1, 4);
 plot(T(2:end), (x_val(2:end, 2) - x_val(1:end-1, 2))/params.Ts, LineWidth=1.2);
@@ -597,6 +623,42 @@ xlabel('Time ($s$)');
 ylabel('Acceleration ($m/s^2$)');
 title("Acceleration over Time");
 grid on;
+
+% Plot the computation time vs iteration
+figure;
+plot(T(1:end-1), iteration_times_imp, LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Computation Time ($s$)');
+title(sprintf('Computation Time for Control Input with Implicit MPC\n$N_p=%d$, $N_c=%d$', dim.Np, dim.Nc));
+grid on;
+
+% figure;
+% sgtitle("Implicit MPC Performance Comparison");
+% subplot(2, 1, 1);
+% hold on;
+% plot(T_54(1:end-1), u_54, LineWidth=1.2);
+% plot(T(1:end-1), optimal_control, LineWidth=1.2);
+% hold off;
+% xlabel('Time ($s$)');
+% ylabel('Throttle Input');
+% title("Throttle Input over Time");
+% leg_v1 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', 5, 4, params.lambda);
+% leg_v2 = sprintf('$u$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+% legend(leg_v1, leg_v2);
+% grid on;
+% subplot(2, 1, 2);
+% hold on;
+% plot(T_54, vel_54, LineWidth=1.2);
+% plot(T, x_val(:, 2), LineWidth=1.2);
+% plot(T, vref(1:length(T)), '--', LineWidth=1.2);
+% hold off;
+% xlabel('Time ($s$)');
+% ylabel('Velocity ($m/s$)');
+% leg_v1 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', 5, 4, params.lambda);
+% leg_v2 = sprintf('$v$ at $N_p=%d$, $N_c=%d$, $\\lambda=%.3f$', dim.Np, dim.Nc, params.lambda);
+% legend(leg_v1, leg_v2, "$v_{ref}$");
+% title("Velocity over Time");
+% grid on;
 
 %% 2.10
 
@@ -621,7 +683,13 @@ b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x0_var +
 X = [z_var; d_var; u_var; q_var; p_var];
 objective = obj.func' * X;
 constraints = [A * X <= b; obj.Aeq * X == obj.beq];
+
+tic;
 [sol, diagn, Z, Valuefcn, Optimizer] = solvemp(constraints, objective, [], [x0_var; vref_var], u_var(1));
+explicit_mpc_comp_time = toc;
+
+fprintf(['Total time to compute Explicit MPC: %.4f seconds' ...
+    ' with Np = %d, Nc = %d\n'], explicit_mpc_comp_time, dim.Np, dim.Nc);
 
 % Initial condition
 x0_ex = [101; 0.925*params.alpha];
@@ -632,12 +700,24 @@ x_val_ex(1, :) = x0_ex';
 
 optimal_control_ex = zeros(length(T)-1, 1);
 
-for k = 1:1:size(T, 2)-1
+% To measure the computation time
+total_time = 0;
+num_iterations = size(T, 2) - 1;
+iteration_times_exp = zeros(1, num_iterations);
+
+for k = 1:1:num_iterations
+    % Start timing
+    tic;
+
     tspan = [T(k) T(k+1)];
 
     assign(x0_var, x0_ex);
     assign(vref_var, vref(k:k+dim.Np-1));
     u = value(Optimizer);
+
+    iteration_time = toc; % Stop timing
+    iteration_times_exp(k) = iteration_time; % Store the computation time for this iteration
+    total_time = total_time + iteration_time; % Accumulate the total time
 
     if isnan(u)
         [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u_prev, params), tspan, x0_ex);
@@ -652,7 +732,10 @@ for k = 1:1:size(T, 2)-1
     x_val_ex(k+1, :) = x0_ex;
 end
 
-%%
+avg_time_per_itr = total_time / num_iterations;
+fprintf(['Average time to compute control input with Explicit MPC: %.4f seconds' ...
+    ' with Np = %d, Nc = %d\n'], avg_time_per_itr, dim.Np, dim.Nc);
+
 % Figures
 figure;
 gTitle = sprintf('Closed-loop States Evolution with Explicit MPC\n$N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
@@ -773,9 +856,6 @@ function [dx] = pwa_model(t, x, params, u)
         acc = ((params.b / params.m) * u) / (1 + params.gamma * r) - (params.g * (theta)) - (p2 / params.m);
     end
 
-    % acc = max(min(acc, params.acc_max), params.dec_max);
-    % vel = max(min(vel, params.vmax), 0)
-
     dx = [vel; acc];
 end
 
@@ -817,6 +897,7 @@ function [Ap, Bp, fp] = predmodgen(A1, B1, B2, B3, f, dim)
 
 end
 
+
 function vref = build_vref(t, params)
     % Initialize the output
     vref = zeros(size(t));
@@ -837,6 +918,7 @@ function vref = build_vref(t, params)
     vref(interval5) = 0.7 * params.alpha + (4/15) * params.alpha * (t(interval5) - 18);
     vref(interval6) = 0.9 * params.alpha;
 end
+
 
 function x_next = simulate_MLD(A1, B1, B2, B3, f, x0, u, params)
     pos = x0(1);
@@ -872,6 +954,7 @@ function x_next = simulate_MLD(A1, B1, B2, B3, f, x0, u, params)
 
     x_next = A1 * x0 + B1 * z + B2 * delta + B3 * u + f;
 end
+
 
 function [pred, obj] = build_obj(params, dim)
     
@@ -913,6 +996,4 @@ function [pred, obj] = build_obj(params, dim)
     obj.intcon = dim.nz*dim.Np + 1:(dim.nz + dim.nd)*dim.Np;
     obj.lb = [-inf*ones(dim.nz*dim.Np,1); zeros(length(obj.intcon),1); -inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
     obj.ub = [inf*ones(dim.nz*dim.Np,1); ones(length(obj.intcon),1); inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
-
 end
-
