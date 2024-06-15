@@ -487,8 +487,8 @@ vref = vref';
 x0 = [101; 0.925*params.alpha];
 
 % Update Prediction and Control Horizon
-dim.Np = 2;
-dim.Nc = 1;
+dim.Np = 3;
+dim.Nc = 3;
 
 % Update max distance using initial condition and vmax
 params.xmax = x0(1) + params.vmax * T_end;
@@ -545,7 +545,7 @@ end
 
 % Figures
 figure;
-gTitle = sprintf('Closed-loop States Evolution with $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+gTitle = sprintf('Closed-loop States Evolution with Implicit MPC\n$N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 sgtitle(gTitle);
 subplot(3, 1, 1);
 plot(x_val(:, 1), x_val(:, 2), LineWidth=1.2);
@@ -571,7 +571,7 @@ title("Velocity over Time");
 grid on;
 
 figure;
-gTitle = sprintf('Closed-loop Response with $N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+gTitle = sprintf('Closed-loop Response with Implicit MPC\n$N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
 sgtitle(gTitle);
 subplot(4, 1, 1);
 plot(T(1:end-1), optimal_control, LineWidth=1.2);
@@ -600,6 +600,114 @@ grid on;
 
 %% 2.10
 
+dim.Np = 2;
+dim.Nc = 2;
+
+x0_var = sdpvar(dim.nx, 1);
+z_var = sdpvar(dim.nz * dim.Np, 1);
+d_var = binvar(dim.nd * dim.Np, 1);
+u_var = sdpvar(dim.nu * dim.Np, 1);
+q_var = sdpvar(dim.nq * dim.Np, 1);
+p_var = sdpvar(dim.np * dim.Np, 1);
+vref_var = sdpvar(dim.Np, 1);
+
+% Get the objective function and prediction matrices
+[pred, obj] = build_obj(params, dim);
+
+% System dynamics are used to calculate the inequality constraints
+A = (obj.A_ineq + obj.I_x * pred.Bp);
+b = (obj.b_ineq - obj.I_x * pred.fp) - (obj.I_x * pred.Ap + obj.I_x0) * x0_var + obj.I_ref * vref_var;
+
+X = [z_var; d_var; u_var; q_var; p_var];
+objective = obj.func' * X;
+constraints = [A * X <= b; obj.Aeq * X == obj.beq];
+[sol, diagn, Z, Valuefcn, Optimizer] = solvemp(constraints, objective, [], [x0_var; vref_var], u_var(1));
+
+% Initial condition
+x0_ex = [101; 0.925*params.alpha];
+
+u_prev = 0;
+x_val_ex = zeros(size(T, 2), dim.nx);
+x_val_ex(1, :) = x0_ex';
+
+optimal_control_ex = zeros(length(T)-1, 1);
+
+for k = 1:1:size(T, 2)-1
+    tspan = [T(k) T(k+1)];
+
+    assign(x0_var, x0_ex);
+    assign(vref_var, vref(k:k+dim.Np-1));
+    u = value(Optimizer);
+
+    if isnan(u)
+        [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u_prev, params), tspan, x0_ex);
+        x0_ex = x_nl(end, :)';
+    else
+        [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u, params), tspan, x0_ex);
+        x0_ex = x_nl(end, :)';
+        u_prev = u;
+    end
+
+    optimal_control_ex(k, :) = u_prev;
+    x_val_ex(k+1, :) = x0_ex;
+end
+
+%%
+% Figures
+figure;
+gTitle = sprintf('Closed-loop States Evolution with Explicit MPC\n$N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+sgtitle(gTitle);%, 'Interpreter', 'latex');
+
+subplot(3, 1, 1);
+plot(x_val_ex(:, 1), x_val_ex(:, 2), LineWidth=1.2);
+xlabel('Position ($m$)');
+ylabel('Velocity ($m/s$)');
+title("State Evolution");
+grid on;
+subplot(3, 1, 2);
+plot(T, x_val_ex(:, 1), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Position ($m$)');
+title("Position over Time");
+grid on;
+subplot(3, 1, 3);
+hold on;
+plot(T, x_val_ex(:, 2), LineWidth=1.2);
+plot(T, vref(1:length(T)), '--', LineWidth=1.2);
+hold off;
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+legend("$v$", "$v_{ref}$");
+title("Velocity over Time");
+grid on;
+
+figure;
+gTitle = sprintf('Closed-loop Response with Explicit MPC\n$N_p=%d$, $N_c=%d$, $\\lambda=%.1f$', dim.Np, dim.Nc, params.lambda);
+sgtitle(gTitle);
+subplot(4, 1, 1);
+plot(T(1:end-1), optimal_control_ex, LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Throttle Input');
+title("Throttle Input over Time");
+grid on;
+subplot(4, 1, 2);
+plot(T(2:end-1), optimal_control_ex(2:end) - optimal_control_ex(1:end-1), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Throttle Input');
+title("Throttle Input Change over Time");
+grid on;
+subplot(4, 1, 3);
+plot(T, x_val_ex(:, 2) - vref(1:length(T)), LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Velocity ($m/s$)');
+title("Velocity Error over Time");
+grid on;
+subplot(4, 1, 4);
+plot(T(2:end), (x_val_ex(2:end, 2) - x_val_ex(1:end-1, 2))/params.Ts, LineWidth=1.2);
+xlabel('Time ($s$)');
+ylabel('Acceleration ($m/s^2$)');
+title("Acceleration over Time");
+grid on;
 
 %% Function
 
@@ -807,3 +915,4 @@ function [pred, obj] = build_obj(params, dim)
     obj.ub = [inf*ones(dim.nz*dim.Np,1); ones(length(obj.intcon),1); inf*ones((dim.nu + dim.nq + dim.np)*dim.Np,1)];
 
 end
+
