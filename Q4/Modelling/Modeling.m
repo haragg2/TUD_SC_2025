@@ -719,7 +719,7 @@ for k = 1:1:num_iterations
     iteration_times_exp(k) = iteration_time; % Store the computation time for this iteration
     total_time = total_time + iteration_time; % Accumulate the total time
 
-    if isnan(u)
+    if isnan(u) || isempty(u)
         [~, x_nl] = ode45(@(t, Y) NL_Dynamics(t, Y, u_prev, params), tspan, x0_ex);
         x0_ex = x_nl(end, :)';
     else
