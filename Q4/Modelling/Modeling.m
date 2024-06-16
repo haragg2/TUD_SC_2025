@@ -295,7 +295,7 @@ x = zeros(length(T), dim.nx);
 x(1,:)  = x0';
 
 for k=1:length(T)-1
-    x(k+1,:) = ( MLD_test(params, x(k,:)', sin(k*params.Ts)) )' ;
+    x(k+1,:) = ( MLD_sim(params, x(k,:)', sin(k*params.Ts)) )' ;
 end
 
 figure;

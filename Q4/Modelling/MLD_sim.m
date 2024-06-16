@@ -1,4 +1,4 @@
-function xp = MLD_test(params, x0, u)
+function xp = MLD_sim(params, x0, u)
     
     
     %-------------------------System Dynamics (MLD)---------------------------%
