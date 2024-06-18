@@ -34,21 +34,31 @@ dim.ny = size(sys_dis.C, 1);        % Number of outputs
 %% LQR
 
 % Tuning weights
-Q = [100 0 0 0;
+% Q = [100 0 0 0;
+%      0 10 0 0;
+%      0 0 40 0;
+%      0 0 0 10];
+% 
+% R = 2.5;
+
+R = 0.1;
+
+Q = [40 0 0 0;
      0 10 0 0;
-     0 0 40 0;
+     0 0 70 0;
      0 0 0 10];
 
-R = 2.5;
+% for i=0.01:0.01:1.8
+%     Q_lqi = blkdiag(Q, i*eye(2));
+%     try
+%         [K_lqr,P,~] = lqi(sys_dis,Q_lqi,R);
+%     catch
+%         i
+%     end
+% end
 
-for i=0.01:0.01:1.8
-    Q_lqi = blkdiag(Q, i*eye(2));
-    try
-        [K_lqr,~,~] = lqi(sys_dis,Q_lqi,R);
-    catch
-        i;
-    end
-end
+[K_lqr, P, ~] = dlqr(A, B, Q, R);
+K_lqr = [K_lqr, 0, 0];
 
 K = -K_lqr(1:4);
 
@@ -86,22 +96,22 @@ Z = struct();
 
 %% Regulation MPC
 
-xr = [0; 0; 0; 0];
-model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
-constraint = Z.lqr;
-penalty = struct('Q', Q, 'R', R, 'P', P);
-terminal = Xn.lqr{1}; % LQR terminal set
-
-model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
+% xr = [0; 0; 0; 0];
+% model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
+% constraint = Z.lqr;
+% penalty = struct('Q', Q, 'R', R, 'P', P);
+% terminal = Xn.lqr{1}; % LQR terminal set
+% 
+% model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
 
 %% Reference Tracking
-% x_ref = pi/6;
-% yref = [-x_ref; x_ref];
-% d_hat = 0;
-% 
-% 
-% xr = targetSelector(model_mpc, Z.lqr, dim, d_hat, yref);
-% model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
+x_ref = pi/6;
+yref = [-x_ref; x_ref];
+d_hat = 0;
+
+
+xr = targetSelector(model_mpc, Z.lqr, dim, d_hat, yref);
+model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
 
 %% 
 

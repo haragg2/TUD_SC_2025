@@ -1,6 +1,3 @@
-clear all
-close all
-clc
 addpath('../functions/');
 addpath('../linear_system_matrices/');
 
