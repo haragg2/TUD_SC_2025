@@ -19,7 +19,7 @@ D = sys_dis.D;
 
 %% Bounds
 
-xlb = [-1.5; -100; -pi; -100];
+xlb = [-1.5; -15; -pi; -15];
 xub = -xlb;
 ulb = -1;
 uub = 1;
@@ -58,7 +58,7 @@ Q = [40 0 0 0;
 % end
 
 [K_lqr, P, ~] = dlqr(A, B, Q, R);
-K_lqr = [K_lqr, 0, 0];
+K_lqr = [K_lqr, 0.02, -0.02];
 
 K = -K_lqr(1:4);
 
@@ -93,28 +93,23 @@ V = struct();
 Z = struct();
 
 [Xn.('lqr'), V.('lqr'), Z.('lqr')] = findXn(A, B, K, N, xlb, xub, ulb, uub, 'lqr');
-
+model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
+constraint = Z.lqr;
+penalty = struct('Q', Q, 'R', R, 'P', P);
+terminal = Xn.lqr{1}; % LQR terminal set
 %% Regulation MPC
 
 % xr = [0; 0; 0; 0];
-% model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(size(C, 1), 1), 'N', N);
-% constraint = Z.lqr;
-% penalty = struct('Q', Q, 'R', R, 'P', P);
-% terminal = Xn.lqr{1}; % LQR terminal set
-% 
 % model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
 
 %% Reference Tracking
+
 x_ref = pi/6;
 yref = [-x_ref; x_ref];
 d_hat = 0;
 
-
 xr = targetSelector(model_mpc, Z.lqr, dim, d_hat, yref);
 model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
-
-%% 
-
 
 
 %% Functions

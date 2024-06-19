@@ -47,7 +47,7 @@ for i=0.01:0.01:1.8
     end
 end
 
-
+% LQR
 % K_lqr = dlqr(sys_dis.A, sys_dis.B, Q, R);
 % K_lqr = [K_lqr, 0, 0];
 sys_cl = ss(sys_dis.A-sys_dis.B*K_lqr(1:4), sys_dis.B, sys_dis.C, sys_dis.D, h);
