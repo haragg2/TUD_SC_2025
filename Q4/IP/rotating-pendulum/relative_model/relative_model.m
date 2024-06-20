@@ -1,5 +1,3 @@
-clear all;
-
 % Define symbolic variables
 syms I1 I2 m1 m2 c1 c2 l1 g b1 b2 a b u theta1(t) theta2(t)
 
@@ -87,7 +85,7 @@ theta_ddot = symmatrix(inv(M_l)*(B_l - C_l*[theta1_dot; theta2_dot] - G_l * g));
 
 %% - Simulate non-linear sysytem 
 
-% Identified parameters - copy paste
+% Identified parameters
 a = 187.247;
 g = 9.81;
 I2 = 0.000110802;

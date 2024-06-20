@@ -32,11 +32,11 @@ function [dx, y] = rot_pendulum(t, x, u, A, C, D, F, a, varargin)
     
     theta_ddot = inv(M_l)*(B_l - C_l*[theta1_dot; theta2_dot] - G_l*g);
 
-    % Output equations.
+    % Output equations
     y = [theta1;                         
         theta2];
 
-     % State equations.
+     % State equations
     dx = [theta1_dot;
           theta_ddot(1,1);
           theta2_dot;

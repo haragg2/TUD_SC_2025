@@ -42,9 +42,6 @@ nlgr = setinit(nlgr, 'Unit', {'rad' 'rad/s' 'rad' 'rad/s'});
 nlgr = setpar(nlgr, 'Minimum', {0.02 0.08 1e-3 -50 -100});
 nlgr = setpar(nlgr, 'Maximum', {0.3 0.15 0.015 50 200});
 
-% nlgr = setpar(nlgr, 'Name', {'K_e' 'm1' 'm2' 'l1' 'l2', 'g'});
-% nlgr = setpar(nlgr, 'Unit', {'Vs/rad' 'kg' 'kg' 'm' 'm' 'm/s^2'});
-
 nlgr.SimulationOptions.AbsTol = 1e-3;
 nlgr.SimulationOptions.RelTol = 1e-3;
 compare(z, nlgr);

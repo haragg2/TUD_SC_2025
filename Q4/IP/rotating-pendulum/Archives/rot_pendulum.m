@@ -1,9 +1,9 @@
 function [dx, y] =rot_pendulum(t, x, u, k, a, b, c, d, e, varargin)
-  % Output equations.
+  % Output equations
   y = [x(1);                         
        x(3)                          
       ];
-  % State equations.
+  % State equations
   dx = [x(2);                        
        d*u(1) - k*x(2) - a*y(2)*cos(x(1) - x(3)) - ...
             a*x(4)^2*sin(x(1) - x(3)) - ...

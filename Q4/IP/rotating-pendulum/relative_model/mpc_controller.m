@@ -1,6 +1,6 @@
 close all
-addpath('functions/');
-addpath('linear_system_matrices/');
+addpath('functions\');
+addpath('linear_system_matrices\');
 
 %% Linearize the system
 
@@ -34,12 +34,6 @@ dim.ny = size(sys_dis.C, 1);        % Number of outputs
 %% LQR
 
 % Tuning weights
-% Q = [100 0 0 0;
-%      0 10 0 0;
-%      0 0 40 0;
-%      0 0 0 10];
-% 
-% R = 2.5;
 
 R = 0.1;
 
@@ -48,23 +42,10 @@ Q = [40 0 0 0;
      0 0 70 0;
      0 0 0 10];
 
-% for i=0.01:0.01:1.8
-%     Q_lqi = blkdiag(Q, i*eye(2));
-%     try
-%         [K_lqr,P,~] = lqi(sys_dis,Q_lqi,R);
-%     catch
-%         i
-%     end
-% end
-
 [K_lqr, P, ~] = dlqr(A, B, Q, R);
 K_lqr = [K_lqr, 0.02, -0.02];
 
 K = -K_lqr(1:4);
-
-% % Find LQR gain matrix
-% [K, P] = dlqr(A, B, Q, R);
-% K = -K; % Sign convention
 
 % Controllability check
 ctrb_sys = ctrb(A, B);
@@ -97,12 +78,13 @@ model_mpc = struct('A', A, 'B', B, 'C', C, 'Bd', zeros(size(B)), 'Cd', zeros(siz
 constraint = Z.lqr;
 penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
+
 %% Regulation MPC
 
-% xr = [0; 0; 0; 0];
-% model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
+xr = [0; 0; 0; 0];
+model_matrices = buildmatrices(xr, model_mpc, constraint, penalty, terminal);
 
-%% Reference Tracking
+%% Reference Tracking - Comment the section out if running Regulation MPC
 
 x_ref = pi/6;
 yref = [-x_ref; x_ref];
@@ -134,14 +116,9 @@ function xr = targetSelector(LTI, Z, dim, d_hat, yref)
 %     ur = xur(dim.nx+1:end);
 end
 
-% ******************************************************************************
-% Helper function for building matrices.
-% ******************************************************************************
-
 function matrices = buildmatrices(xr,model, constraint, penalty, terminal)
-% matrices = buildmatrices(model, constraint, penalty, terminal)
-%
-% Returns the matrices struct used by the main function.
+
+% Returns the matrices struct used by the main function
 
 N = model.N;
 A = model.A;
@@ -149,10 +126,10 @@ A = model.A;
 if diff(size(A)) ~= 0
     error('model.Ak must be a square matrix.');
 end
-numx = size(A,1); % Number of states.
+numx = size(A,1); % Number of states
 
 B = model.B;
-numu = size(B,2); % Number of inputs.
+numu = size(B,2); % Number of inputs
 
 if isfield(constraint,'G')
     G = constraint.G;
@@ -165,7 +142,7 @@ else
     psi = zeros(0, 1);
 end
 
-% Penalty matrices.
+% Penalty matrices
 Q = penalty.Q;
 R = penalty.R;
 P = penalty.P;
@@ -173,7 +150,7 @@ M = zeros(numx, numu);
 
 littleH = [Q, M; M', R];
 bigH = kron(eye(N),littleH);
-bigH = blkdiag(bigH, P); % Add final penalty matrix.
+bigH = blkdiag(bigH, P); % Add final penalty matrix
 
 bigf = zeros(size(bigH, 1), 1);
 
@@ -195,10 +172,10 @@ bigf = zeros(size(bigH, 1), 1);
 % +-             -+
 %
 % and then get rid of extra rows (for last A1) and columns (for
-% nonexistant variable u_N).
+% nonexistant variable u_N)
 
 % For Equalities:
-% A1 = [A, B], A2 = [-I, 0].
+% A1 = [A, B], A2 = [-I, 0]
 littleAeq1 = [A, B];
 littleAeq2 = [-eye(size(A)), zeros(size(B))];
 
@@ -210,22 +187,22 @@ bigAeq = bigAeq(1:end-numx,1:end-numu);
 bigbeq = zeros(numx*N,1);
 
 % For Inequalities:
-% A1 = [G, H], A2 = [0, 0].
+% A1 = [G, H], A2 = [0, 0]
 littleAlt1 = [G, H];
 littleAlt2 = [zeros(size(G)), zeros(size(H))];
 
 bigAlt = kron(eye(N+1),littleAlt1) + kron(diag(ones(1,N),1), ...
     littleAlt2);
 bigAlt = bigAlt(1:end-size(littleAlt1,1),1:end-numu);
-    % Remove columns for u_N and for rows of G x_N + D u_N <= d.
+    % Remove columns for u_N and for rows of G x_N + D u_N <= d
 bigblt = repmat(psi, N, 1);
 
-% Variable bounds.
+% Variable bounds
 numVar = length(bigf);
 LB = -inf*ones(numVar,1);
 UB = inf*ones(numVar,1);
 
-% Decide terminal constraint.
+% Decide terminal constraint
 if isstruct(terminal) && all(isfield(terminal, {'A', 'b'}))
     Af = terminal.A;
     bf = terminal.b + Af*xr;
@@ -240,9 +217,9 @@ else
     error('Unknown input for terminal!');
 end
 
-% Build struct with appropriate names.
+% Build struct with appropriate names
 matrices = struct('H', bigH, 'f', bigf, 'Aeq', bigAeq, 'beq', bigbeq, ...
                   'Alt', bigAlt, 'blt', bigblt, 'lb', LB, 'ub', UB);
 
-end%function
+end
 

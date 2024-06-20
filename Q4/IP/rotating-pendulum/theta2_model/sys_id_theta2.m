@@ -1,10 +1,6 @@
-% u_data = u_struct.input_data.Data;
 u_temp = volt.Data(:);
-% u_data = u_temp(215:1442);
 u_data = u_temp(102:2331);
 
-%theta2 = detrend(th2.Data(310:1981)); for th2_0 = 0.5;
-% theta2 = detrend(th2.Data(215:1442));
 theta2 = detrend(th2.Data(102:2331));
 h = volt.Time(2) - volt.Time(1);
 
@@ -21,18 +17,13 @@ plot(z(:));     % Plot input-output pair (Voltage -> Angular velocity).
 
 FileName      = 'rot_pendulum_theta2';       % File describing the model structure.
 Order         = [1 1 2];                     % Model orders [ny nu nx].
-
-%Parameters    = [0.054797, 0.0572183, 6.62561e-05,  0.0001]; % t2_0 = 0.3 85% 
-Parameters    = [0.05914, 0.0563237, 5.65455e-05,  0.000110802]; % t2_0 = 0.5 86%
+Parameters    = [0.05914, 0.0563237, 5.65455e-05,  0.000110802];
 
 InitialStates = [theta2(1); 0];            % Initial initial states.
 Ts            = 0;                         % Time-continuous system.
 
-% 0.074, 0.00012, 0.125, 0.05, 0.04, 0.06, 0.1, 9.81, 4.8, 0.0002
 
 nlgr = idnlgrey(FileName, Order, Parameters, InitialStates, Ts, 'Name', 'Rot_Pendulum');
-
-
 
 set(nlgr, 'InputName', 'Voltage', 'InputUnit', 'V',...
           'OutputName', {'Theta 2 Angular position'},...

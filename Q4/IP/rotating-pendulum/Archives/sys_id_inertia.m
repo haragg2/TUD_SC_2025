@@ -44,8 +44,6 @@ Parameters    = [5.57477, 0.0634785, 0.0129319, 0.0104032, 0.00817803, 31.8741, 
 InitialStates = [3.17; 0; 2.1096; 0];            % Initial initial states.
 Ts            = 0;                                  % Time-continuous system.
 
-% 0.074, 0.00012, 0.125, 0.05, 0.04, 0.06, 0.1, 9.81, 4.8, 0.0002
-
 nlgr = idnlgrey(FileName, Order, Parameters, InitialStates, Ts, ...
                 'Name', 'Rot_Pendulum');
 set(nlgr, 'InputName', 'Voltage', 'InputUnit', 'V',               ...

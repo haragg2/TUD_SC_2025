@@ -1,15 +1,6 @@
 function [dx, y] = rot_pendulum(t, x, u, A, B, C, D, E, F, G, H, varargin)
-    % I1 = 0.074;
-    % I2 = 0.00012;
-    % m1 = 0.125;
-    % m2 = 0.05;
-    % c1 = 0.04; % could be negative
-    % c2 = 0.06;
-    % l1 = 0.1;
-    g = 9.81;
-    % b1 = 4.8;
-    % b2 = 0.0002;
 
+    g = 9.81;
     theta1 = x(1);
     theta2 = x(3);
     theta1_dot = x(2);
@@ -37,11 +28,11 @@ function [dx, y] = rot_pendulum(t, x, u, A, B, C, D, E, F, G, H, varargin)
     
     theta_ddot = inv(M_l)*(B_l - C_l - G_l*g);
 
-    % Output equations.
+    % Output equations
     y = [theta1;                         
         theta2];
 
-     % State equations.
+     % State equations
     dx = [theta1_dot;
           theta_ddot(1,1);
           theta2_dot;

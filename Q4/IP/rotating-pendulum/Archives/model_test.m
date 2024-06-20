@@ -86,20 +86,23 @@ B_l = [T_inp(t); 0];
 
 theta_ddot = symmatrix(inv(M_l)*(B_l - C_l - G_l*g));
 
-I1 = 0.074;
-I2 = 0.00012;
-m1 = 0.125;
-m2 = 0.05;
-c1 = 0.04; % could be negative
-c2 = 0.06;
+
+a = 187.247;
+g = 9.81;
+I2 = 0.000110802;
+m2 = 0.05914;
+c2 = 0.0563237;
+b2 = 5.65455e-05;
+
+I1 = 0.01;
+m1 = 0.2;
+c1 = 0.1;
 l1 = 0.1;
 g = 9.81;
-b1 = 4.8;
-b2 = 0.0002;
-a = 0;
+b1 = 10;
 b = 0;
-km = 50;
-tau_e = 0.03;
+km = 100;
+tau_e = 0.01;
 
 eq1 = theta1_ddot == theta_ddot(1, 1);
 eq2 = theta2_ddot == theta_ddot(2, 1);

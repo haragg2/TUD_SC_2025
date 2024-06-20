@@ -143,7 +143,7 @@ for i=1:1:size(time,2)
 
     tspan = [t, t+h];
     [~, theta] = ode45(@(t, Y)MF(t, Y, u), tspan, theta0);
-    theta0 = theta(end, :)'
+    theta0 = theta(end, :)';
 
     Theta_eval = [Theta_eval; theta0'];
 

@@ -1,5 +1,5 @@
-addpath('../functions/');
-addpath('../linear_system_matrices/');
+addpath('functions\');
+addpath('linear_system_matrices\');
 
 % Set Latex interpreter for plots
 set(groot,'defaulttextinterpreter','latex');  
@@ -52,12 +52,12 @@ D = sys_dis.D;
 
 %% Bounds
 
-xlb = [-0.3; -8; -0.4; -15];
+xlb = [-1.5; -15; -pi; -15];
 xub = -xlb;
 ulb = -1;
 uub = 1;
 
-N = 5; % Horizon
+N = 12; % Horizon
 
 % Defines the dimensions
 dim.nx = size(sys_dis.A, 1);        % Number of states
@@ -269,7 +269,8 @@ penalty = struct('Q', Q, 'R', R, 'P', P);
 terminal = Xn.lqr{1}; % LQR terminal set
 
 % x0 = [0.25, 0, -0.1, 0]';  % initial condition for XN
-x0 = [0.2654; -3.0552; -0.1543; 5.2605];
+x0 = [0.2654; -3.0552; -0.1543; 5.2605]; % initial condition for XN
+x0 = [0.4, 0, -0.1, 0]';
 xr = [0; 0; 0; 0]; % reference x_r set to 0 for regulation
 ref = [repmat([xr;0],N,1); xr];
 
@@ -290,102 +291,102 @@ MPC_data = struct('model', model_mpc, 'constraint', constraint, 'penalty', penal
 
 %% Start Regulation Simulation
 
-% disp("MPC Regulation Started");
-% for k = 1:1:size(T, 2)-1
-%     t(k) = (k-1) * h;
-%     if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
-%         fprintf('t = %d sec \n', floor(t(k)));
-%     end
-% 
-%     % Get the initial state from the non-linear dynamics last step state
-%     model_mpc.x0 = x(:,k);
-%     [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model_mpc, constraint, penalty, ...
-%                                              terminal, mpcmats);
-%     if status ~= 1
-%         disp("Error");
-%         break;
-%     end
-% 
-%     % Get the first optimal control input from the MPC controller
-%     usim(:,k) = uk(:,1);
-% 
-%     % Optimal cost function value
-%     V_N(k) = FVAL;
-% 
-%     if sm_nl_sys == 1
-%         % Simlulate the non-linear dynamics with the current control input for
-%         % Ts time (ZOH operation)
-%         tspan = [T(k), T(k+1)];
-%         x(:,k+1) = NLSystemDynamics(model, x_eq, x(:,k), tspan, usim(:, k));
-%     else
-%         % Simlulate the linearized system
-%         x(:,k+1) = A*x(:,k) + B*usim(:,k);
-%     end
-% 
-%     % Control Lyapunov function
-%     V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
-% 
-%     % Stage costs computed at different time steps
-%     l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
-%     l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
-% end
-% 
-% V_N_reg = V_N;
-% V_f_reg = V_f;
-% CLF_ineq_reg = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
-% V_N_ineq_reg = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
-% 
-% disp("MPC Regulation Finished.");
-% 
-% % Display MPC Regulation plots
-% 
-% figure;
-% sgtitle("Regulation MPC vs Unconstrained LQR Response");
-% subplot(5, 1, 1);
-% hold on;
-% grid on;
-% hplots(1) = stairs(x(1,1:end-1), 'LineWidth', 1.5);
-% hplots(2) = stairs(x_LQ(1:end-1,1), 'LineWidth', 1.5);
-% ylabel('$\theta_{w}$');
-% hold off;
-% subplot(5, 1, 2);
-% hold on;
-% grid on;
-% hplots(1) = stairs(x(2,1:end-1), 'LineWidth', 1.5);
-% hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
-% ylabel('$$\dot{\theta_{w}}$$');
-% hold off;
-% subplot(5, 1, 3);
-% hold on;
-% grid on;
-% hplots(1) = stairs(x(3,1:end-1), 'LineWidth', 1.5);
-% hplots(2) = stairs(x_LQ(1:end-1,3), 'LineWidth', 1.5);
-% ylabel('$\theta_{p}$');
-% hold off;
-% subplot(5, 1, 4);
-% hold on;
-% grid on;
-% hplots(1) = stairs(x(4,1:end-1), 'LineWidth', 1.5);
-% hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
-% ylabel('$$\dot{\theta_{p}}$$');
-% hold off;
-% subplot(5, 1, 5);
-% hold on;
-% grid on;
-% hplots(1) = stairs(usim, 'LineWidth', 1.5);
-% hplots(1) = stairs(u_LQ(1:end-1), 'LineWidth', 1.5);
-% hold off;
-% xlabel('Time Step $k$');
-% ylabel('$u$');
-% 
-% hL = legend({'MPC', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
-% set(hL, 'Location', 'southoutside', 'Box', 'off');
-% 
-% 
-% %%  Simulation of regulation
-% 
-% % setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
-% setupAnimation(1, x, x_eq, h, T_sim);
+disp("MPC Regulation Started");
+for k = 1:1:size(T, 2)-1
+    t(k) = (k-1) * h;
+    if ( k > 1 && (floor(t(k)) - floor(t(k-1))) == 1 )
+        fprintf('t = %d sec \n', floor(t(k)));
+    end
+
+    % Get the initial state from the non-linear dynamics last step state
+    model_mpc.x0 = x(:,k);
+    [xk, uk, FVAL, status, mpcmats] = linearmpc(xr,ref,0,model_mpc, constraint, penalty, ...
+                                             terminal, mpcmats);
+    if status ~= 1
+        disp("Error");
+        break;
+    end
+
+    % Get the first optimal control input from the MPC controller
+    usim(:,k) = uk(:,1);
+
+    % Optimal cost function value
+    V_N(k) = FVAL;
+
+    if sm_nl_sys == 1
+        % Simlulate the non-linear dynamics with the current control input for
+        % Ts time (ZOH operation)
+        tspan = [T(k), T(k+1)];
+        x(:,k+1) = NLSystemDynamics(model, x_eq, x(:,k), tspan, usim(:, k));
+    else
+        % Simlulate the linearized system
+        x(:,k+1) = A*x(:,k) + B*usim(:,k);
+    end
+
+    % Control Lyapunov function
+    V_f(k) = 0.5*xk(:,end)'*P*xk(:,end);
+
+    % Stage costs computed at different time steps
+    l_xu(k) = 0.5*xk(:,end-1)'*Q*xk(:,end-1) + 0.5*uk(:,end)'*R*uk(:,end);
+    l_xu0(k) = 0.5*xk(:,1)'*Q*xk(:,1) + 0.5*uk(:,1)'*R*uk(:,1);
+end
+
+V_N_reg = V_N;
+V_f_reg = V_f;
+CLF_ineq_reg = V_f(2:end)-V_f(1:end-1)+l_xu(2:end);
+V_N_ineq_reg = V_N(2:end)-V_N(1:end-1)+l_xu0(1:end-1)-(V_f(2:end)-V_f(1:end-1)+l_xu(2:end));
+
+disp("MPC Regulation Finished.");
+
+% Display MPC Regulation plots
+
+figure;
+sgtitle("Regulation MPC vs Unconstrained LQR Response");
+subplot(5, 1, 1);
+hold on;
+grid on;
+hplots(1) = stairs(x(1,1:end-1) + theta1_eq, 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,1) + theta1_eq, 'LineWidth', 1.5);
+ylabel('$\theta_{w}$');
+hold off;
+subplot(5, 1, 2);
+hold on;
+grid on;
+hplots(1) = stairs(x(2,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,2), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{w}}$$');
+hold off;
+subplot(5, 1, 3);
+hold on;
+grid on;
+hplots(1) = stairs(x(3,1:end-1) + theta2_eq, 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,3) + theta2_eq, 'LineWidth', 1.5);
+ylabel('$\theta_{p}$');
+hold off;
+subplot(5, 1, 4);
+hold on;
+grid on;
+hplots(1) = stairs(x(4,1:end-1), 'LineWidth', 1.5);
+hplots(2) = stairs(x_LQ(1:end-1,4), 'LineWidth', 1.5);
+ylabel('$$\dot{\theta_{p}}$$');
+hold off;
+subplot(5, 1, 5);
+hold on;
+grid on;
+hplots(1) = stairs(usim, 'LineWidth', 1.5);
+hplots(1) = stairs(u_LQ(1:end-1), 'LineWidth', 1.5);
+hold off;
+xlabel('Time Step $k$');
+ylabel('$u$');
+
+hL = legend({'MPC', 'LQR'}, 'Interpreter', 'latex', 'Orientation', 'horizontal');
+set(hL, 'Location', 'southoutside', 'Box', 'off');
+
+
+%%  Simulation of regulation
+
+% setupAnimation(sm_nl_sys, x, theta_p_eq, r, beta, l, Ts, T_sim);
+setupAnimation(1, x, x_eq, h, T_sim);
 
 %% Functions
 
@@ -467,7 +468,7 @@ function [model, theta_ddot] = getModel()
     theta_ddot = inv(M_l)*(B_l - C_l*[theta1_dot; theta2_dot] - G_l * g);
     theta_ddot_s = symmatrix(theta_ddot);
     
-    % Identified parameters - copy paste
+    % Identified parameters
     a = 187.247;
     g = 9.81;
     I2 = 0.000110802;
@@ -502,25 +503,6 @@ function [X] = NLSystemDynamics(model, x_eq, x0, tspan, input_voltage)
     X = x_step(end, :)' - x_eq;
 end
 
-% function [xr, ur] = targetSelector(LTI, Z, dim, d_hat, yref)
-% 
-%     eqconstraints.A = [eye(dim.nx) - LTI.A, -LTI.B; LTI.C, zeros(size(LTI.C, 1), dim.nu)];
-%     eqconstraints.b = [LTI.Bd * d_hat; yref - (LTI.Cd*d_hat)];
-% 
-%     ineqconstraints.A = [Z.('G'), Z.('H')];
-%     ineqconstraints.b = Z.('psi');
-% 
-%     H = blkdiag(zeros(dim.nx), eye(dim.nu));
-%     h = zeros(dim.nx+dim.nu, 1);
-% 
-%     options1 = optimoptions(@quadprog);
-%     options1.OptimalityTolerance=1e-20;
-%     options1.ConstraintTolerance=1.0000e-15;
-%     options1.Display='off';
-%     xur=quadprog(H,h,ineqconstraints.A,ineqconstraints.b,eqconstraints.A,eqconstraints.b,[],[],[],options1);
-%     xr = xur(1:dim.nx);
-%     ur = xur(dim.nx+1:end);
-% end
 
 function setupAnimation(sm_nl_sys, x, theta_eq, Ts, T_sim)
     l1 = 0.1;
@@ -535,10 +517,10 @@ function setupAnimation(sm_nl_sys, x, theta_eq, Ts, T_sim)
     end
     
     % Non-linear equations
-    x1 = @(tt) (-l1 * sin(x(1, (floor(tt/Ts)+1))));
+    x1 = @(tt) (l1 * sin(x(1, (floor(tt/Ts)+1))));
     y1 = @(tt) (-l1 * cos(x(1, (floor(tt/Ts)+1))));
     
-    x2 = @(tt) (-l2 * sin(x(1, (floor(tt/Ts)+1)) + x(3, (floor(tt/Ts)+1))));
+    x2 = @(tt) (l2 * sin(x(1, (floor(tt/Ts)+1)) + x(3, (floor(tt/Ts)+1))));
     y2 = @(tt) (-l2 * cos(x(1, (floor(tt/Ts)+1)) + x(3, (floor(tt/Ts)+1))));
 
     figure;
